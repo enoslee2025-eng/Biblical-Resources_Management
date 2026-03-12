@@ -1,0 +1,20 @@
+{
+  "name": "删除资源",
+  "method": "DELETE",
+  "path": "/private/api/resource/delete/{id}",
+  "auth": true,
+  "description": "删除指定资源，只能删除自己创建的资源",
+  "request": {
+    "headers": {
+      "Authorization": "Bearer {token}"
+    },
+    "params": {
+      "id": "资源ID"
+    }
+  },
+  "response": {
+    "code": 200,
+    "message": "success",
+    "data": null
+  }
+}

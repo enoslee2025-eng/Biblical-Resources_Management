@@ -1,0 +1,65 @@
+# bible dictionary Deployment
+# Quarkus 应用部署配置
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bible dictionary-api
+  namespace: default
+  labels:
+    app: bible dictionary
+    component: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bible dictionary
+      component: api
+  template:
+    metadata:
+      labels:
+        app: bible dictionary
+        component: api
+    spec:
+      containers:
+        - name: bible dictionary-api
+          # 镜像地址，需要替换为实际的镜像仓库地址
+          image: {{REGISTRY}}/bible dictionary:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          # 环境变量 - 从 ConfigMap 读取
+          envFrom:
+            - configMapRef:
+                name: bible dictionary-config
+          # 环境变量 - 从 Secret 读取
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bible dictionary-secret
+                  key: DB_PASSWORD
+          # 资源限制
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          # 健康检查 - 存活探针
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          # 健康检查 - 就绪探针
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3

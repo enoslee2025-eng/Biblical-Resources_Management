@@ -1,0 +1,9 @@
+-- 用户表（ID 来自主内圣经 APP 的 UID）
+CREATE TABLE IF NOT EXISTS users (
+    id BIGINT PRIMARY KEY COMMENT '用户ID，来自APP的UID',
+    token VARCHAR(255) COMMENT '登录Token',
+    token_expires_at DATETIME COMMENT 'Token过期时间',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_token (token)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';

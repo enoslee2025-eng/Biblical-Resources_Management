@@ -1,0 +1,30 @@
+{
+  "name": "获取资源详情",
+  "method": "GET",
+  "path": "/private/api/resource/detail/{id}",
+  "auth": true,
+  "description": "获取资源的完整详情，包含内容数据（content_json），用于编辑和预览",
+  "request": {
+    "headers": {
+      "Authorization": "Bearer {token}"
+    },
+    "pathParams": {
+      "id": "资源ID"
+    }
+  },
+  "response": {
+    "code": 200,
+    "message": "success",
+    "data": {
+      "id": "资源ID",
+      "type": "资源类型",
+      "title": "资源标题",
+      "metaJson": "元数据",
+      "contentJson": "资源内容（完整JSON）",
+      "isPublic": 0,
+      "version": 1,
+      "createdAt": "创建时间",
+      "updatedAt": "更新时间"
+    }
+  }
+}

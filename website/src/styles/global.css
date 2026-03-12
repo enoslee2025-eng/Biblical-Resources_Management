@@ -1,0 +1,436 @@
+/**
+ * 全局样式 — 教会风格设计系统
+ * 参考 Harmony Community Church 模板美学
+ * 配色：深蓝 + 暖米色 + 深炭色 + 白色
+ * 字体：衬线标题 + 无衬线正文
+ */
+
+/* ===================== 品牌主题变量 ===================== */
+
+:root {
+  /* 教会风格主色调 */
+  --church-navy: #3d5a80;
+  --church-navy-light: #5a7da8;
+  --church-navy-dark: #2c4260;
+  --church-cream: #f5f0eb;
+  --church-cream-dark: #ebe4dc;
+  --church-charcoal: #3a3a3a;
+  --church-gold: #c9a96e;
+  --church-gold-light: #d4bc8a;
+  --church-white: #ffffff;
+  --church-warm-gray: #8a8178;
+  --church-border: #e0d8cf;
+
+  /* 资源类型专色 */
+  --app-type-bible: #3d5a80;
+  --app-type-commentary: #5a8a6e;
+  --app-type-dictionary: #b8914a;
+  --app-type-material: #7a6b8a;
+
+  /* 语义色 */
+  --app-primary: #3d5a80;
+  --app-primary-light: #edf1f5;
+  --app-primary-dark: #2c4260;
+  --app-accent: #c9a96e;
+  --app-accent-light: #f8f3eb;
+  --app-warning: #d4a843;
+  --app-warning-light: #fdf6e3;
+  --app-warning-dark: #8d6e2c;
+  --app-danger: #c05050;
+
+  /* 文字色 */
+  --app-text-primary: #2c2c2c;
+  --app-text-secondary: #6b6560;
+  --app-text-tertiary: #9a948e;
+
+  /* 背景与卡片 */
+  --app-bg: #f5f0eb;
+  --app-card-bg: #ffffff;
+  --app-card-shadow: 0 2px 16px rgba(58, 58, 58, 0.06);
+  --app-card-shadow-hover: 0 6px 24px rgba(58, 58, 58, 0.12);
+  --app-border: #e0d8cf;
+
+  /* 字体 */
+  --font-heading: 'Cormorant Garamond', 'Noto Serif SC', 'STSong', 'SimSun', Georgia, serif;
+  --font-body: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', Roboto, sans-serif;
+
+  /* 覆盖 Vant 默认色 */
+  --van-primary-color: #3d5a80;
+  --van-success-color: #5a8a6e;
+  --van-warning-color: #d4a843;
+  --van-danger-color: #c05050;
+  --van-text-color: #2c2c2c;
+  --van-text-color-2: #6b6560;
+  --van-text-color-3: #9a948e;
+  --van-background: #f5f0eb;
+  --van-background-2: #ffffff;
+  --van-border-color: #e0d8cf;
+  --van-active-color: #ebe4dc;
+
+  /* ActionSheet / Dialog / Popup 组件变量（浅色） */
+  --van-action-sheet-item-text-color: #2c2c2c;
+  --van-action-sheet-item-disabled-text-color: #9a948e;
+  --van-action-sheet-subname-color: #6b6560;
+  --van-action-sheet-cancel-text-color: #6b6560;
+  --van-action-sheet-description-color: #6b6560;
+  --van-action-sheet-background: #ffffff;
+  --van-dialog-background: #ffffff;
+  --van-dialog-message-text-color: #2c2c2c;
+  --van-popup-background: #ffffff;
+  --van-cell-text-color: #2c2c2c;
+  --van-cell-background: #ffffff;
+  --van-cell-label-color: #6b6560;
+  --van-field-label-color: #6b6560;
+  --van-field-input-text-color: #2c2c2c;
+  --van-search-background: #f5f0eb;
+  --van-search-content-background: #ffffff;
+  --van-nav-bar-background: #ffffff;
+  --van-nav-bar-title-text-color: #2c2c2c;
+  --van-nav-bar-icon-color: #2c2c2c;
+  --van-tab-text-color: #6b6560;
+  --van-tab-active-text-color: #3d5a80;
+  --van-toast-text-color: #ffffff;
+  --van-toast-background: rgba(58, 58, 58, 0.85);
+}
+
+/* ===================== 深色模式变量 ===================== */
+
+html.van-theme-dark {
+  --church-navy: #5a7da8;
+  --church-cream: #1a1816;
+  --church-charcoal: #e8e4e0;
+  --church-gold: #d4bc8a;
+  --church-border: #2e2a26;
+
+  --app-primary: #5a7da8;
+  --app-primary-light: #1e2838;
+  --app-primary-dark: #3d5a80;
+  --app-accent: #d4bc8a;
+  --app-accent-light: #2a241a;
+  --app-warning: #d4bc8a;
+  --app-warning-light: #2a241a;
+  --app-warning-dark: #d4bc8a;
+  --app-danger: #d47070;
+
+  --app-type-bible: #5a7da8;
+  --app-type-commentary: #6fcf97;
+  --app-type-dictionary: #d4bc8a;
+  --app-type-material: #a090b8;
+
+  --app-text-primary: #e8e4e0;
+  --app-text-secondary: #8a8580;
+  --app-text-tertiary: #5a5550;
+
+  --app-bg: #121110;
+  --app-card-bg: #1e1c1a;
+  --app-card-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  --app-card-shadow-hover: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --app-border: #2e2a26;
+
+  /* 覆盖 Vant 深色模式变量 */
+  --van-primary-color: #5a7da8;
+  --van-success-color: #6fcf97;
+  --van-warning-color: #d4bc8a;
+  --van-danger-color: #d47070;
+  --van-text-color: #e8e4e0;
+  --van-text-color-2: #8a8580;
+  --van-text-color-3: #5a5550;
+  --van-background: #121110;
+  --van-background-2: #1e1c1a;
+  --van-border-color: #2e2a26;
+  --van-active-color: #252220;
+
+  --van-action-sheet-item-text-color: #e8e4e0;
+  --van-action-sheet-item-disabled-text-color: #5a5550;
+  --van-action-sheet-subname-color: #8a8580;
+  --van-action-sheet-cancel-text-color: #8a8580;
+  --van-action-sheet-description-color: #8a8580;
+  --van-action-sheet-background: #1e1c1a;
+  --van-dialog-background: #1e1c1a;
+  --van-dialog-message-text-color: #e8e4e0;
+  --van-popup-background: #1e1c1a;
+  --van-cell-text-color: #e8e4e0;
+  --van-cell-background: #1e1c1a;
+  --van-cell-label-color: #8a8580;
+  --van-field-label-color: #8a8580;
+  --van-field-input-text-color: #e8e4e0;
+  --van-search-background: #121110;
+  --van-search-content-background: #1e1c1a;
+  --van-nav-bar-background: #1e1c1a;
+  --van-nav-bar-title-text-color: #e8e4e0;
+  --van-nav-bar-icon-color: #e8e4e0;
+  --van-tab-text-color: #8a8580;
+  --van-tab-active-text-color: #5a7da8;
+  --van-toast-text-color: #e8e4e0;
+  --van-toast-background: #2e2a26;
+}
+
+/* 深色模式登录页渐变 */
+html.van-theme-dark .login-page {
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(61, 90, 128, 0.3) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(58, 58, 58, 0.2) 0%, transparent 50%),
+    linear-gradient(160deg, #1a1816 0%, #121110 100%);
+}
+
+/* ===================== 全局基础样式 ===================== */
+
+body {
+  font-family: var(--font-body);
+  color: var(--app-text-primary);
+}
+
+/* 页面容器 */
+.page {
+  min-height: 100vh;
+  background-color: var(--app-bg);
+}
+
+/* 衬线标题样式工具类 */
+.heading-serif {
+  font-family: var(--font-heading);
+  letter-spacing: 3px;
+  font-weight: 600;
+}
+
+/* 大写宽间距标题 */
+.heading-upper {
+  text-transform: uppercase;
+  letter-spacing: 5px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+/* 教会风格按钮 */
+.btn-church {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 32px;
+  background: var(--church-navy);
+  color: #fff;
+  border: none;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-church:hover {
+  background: var(--church-navy-dark);
+  box-shadow: 0 4px 16px rgba(61, 90, 128, 0.3);
+}
+
+.btn-church-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 32px;
+  background: transparent;
+  color: var(--church-navy);
+  border: 1.5px solid var(--church-navy);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-church-outline:hover {
+  background: var(--church-navy);
+  color: #fff;
+}
+
+/* 屏幕阅读器专用（视觉隐藏但可读） */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+/* ===================== 共享组件样式 ===================== */
+
+/* Tabs 主题色 */
+.page :deep(.van-tabs__line) {
+  background: var(--app-primary);
+}
+
+.page :deep(.van-tab--active) {
+  color: var(--app-primary);
+}
+
+/* 表单卡片样式 */
+.page :deep(.van-cell-group--inset) {
+  border-radius: 4px;
+  box-shadow: var(--app-card-shadow);
+  overflow: hidden;
+}
+
+/* 未保存提醒条 */
+.dirty-bar {
+  background: var(--app-warning-light);
+  color: var(--app-warning-dark);
+  text-align: center;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border-bottom: 1px solid var(--app-warning);
+}
+
+/* 导入弹窗 */
+.import-popup {
+  padding: 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--app-card-bg);
+  color: var(--app-text-primary);
+}
+
+.import-title {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--app-text-primary);
+  margin-bottom: 16px;
+}
+
+.import-file-btn {
+  padding: 0 0 12px;
+}
+
+.import-textarea {
+  flex: 1;
+}
+
+.import-actions {
+  padding: 12px 0;
+}
+
+/* ===================== 交互动画 ===================== */
+
+/* 按钮点击反馈 */
+.van-button:active {
+  transform: scale(0.96);
+  transition: transform 0.1s ease;
+}
+
+/* 卡片交互 */
+.resource-card:active,
+.hero-card:active {
+  transform: scale(0.97);
+}
+
+/* FAB 入场动画 */
+@keyframes fab-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* 深色模式 FAB 阴影 */
+html.van-theme-dark .fab-button {
+  box-shadow: 0 6px 24px rgba(90, 125, 168, 0.3);
+}
+
+/* 编辑器横幅深色模式 */
+html.van-theme-dark .editor-banner {
+  opacity: 0.9;
+}
+
+/* 渐入动画 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===================== Vant 弹出组件颜色修复 ===================== */
+
+.van-toast {
+  background: rgba(58, 58, 58, 0.85) !important;
+  color: #fff !important;
+}
+
+.van-action-sheet {
+  background: var(--app-card-bg) !important;
+}
+
+.van-action-sheet__item {
+  background: var(--app-card-bg) !important;
+  color: var(--app-text-primary) !important;
+}
+
+.van-action-sheet__cancel {
+  background: var(--app-card-bg) !important;
+  color: var(--app-text-secondary) !important;
+}
+
+.van-action-sheet__gap {
+  background: var(--app-bg) !important;
+}
+
+.van-dialog {
+  background: var(--app-card-bg) !important;
+}
+
+.van-dialog__header {
+  color: var(--app-text-primary) !important;
+}
+
+.van-dialog__message {
+  color: var(--app-text-primary) !important;
+}
+
+.van-dialog__confirm {
+  color: var(--app-primary) !important;
+}
+
+.van-dialog__cancel {
+  color: var(--app-text-secondary) !important;
+}
+
+.van-popup {
+  background: var(--app-card-bg) !important;
+  color: var(--app-text-primary) !important;
+}
+
+/* ===================== Element Plus 组件教会风格覆盖 ===================== */
+
+/* 按钮 */
+.el-button--primary {
+  --el-button-bg-color: var(--church-navy);
+  --el-button-border-color: var(--church-navy);
+  --el-button-hover-bg-color: var(--church-navy-light);
+  --el-button-hover-border-color: var(--church-navy-light);
+  --el-button-active-bg-color: var(--church-navy-dark);
+  --el-button-active-border-color: var(--church-navy-dark);
+}
+
+/* 进度条 */
+.el-progress-bar__inner {
+  background-color: var(--church-navy);
+}
+
+/* 分页器 */
+.el-pagination.is-background .el-pager li.is-active {
+  background-color: var(--church-navy);
+}

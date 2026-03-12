@@ -1,0 +1,17 @@
+{
+  "name": "生成二维码",
+  "method": "POST",
+  "path": "/public/api/auth/qr/create",
+  "auth": false,
+  "description": "生成二维码登录会话，返回会话ID和验证码，前端用于生成二维码图片",
+  "request": {},
+  "response": {
+    "code": 200,
+    "message": "success",
+    "data": {
+      "id": "会话ID（UUID字符串）",
+      "code": "6位数字验证码",
+      "status": 0
+    }
+  }
+}

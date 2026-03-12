@@ -1,0 +1,16 @@
+# bible dictionary ConfigMap
+# 非敏感配置信息
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bible dictionary-config
+  namespace: default
+  labels:
+    app: bible dictionary
+data:
+  # 数据库连接 URL（不含密码）
+  DB_URL: "jdbc:mysql://{{MYSQL_HOST}}:3306/bible dictionary?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai"
+  # 数据库用户名
+  DB_USER: "bible dictionary"
+  # 应用配置
+  QUARKUS_HTTP_PORT: "8080"

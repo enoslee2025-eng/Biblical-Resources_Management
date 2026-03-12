@@ -1,0 +1,33 @@
+{
+  "name": "更新资源",
+  "method": "PUT",
+  "path": "/private/api/resource/update/{id}",
+  "auth": true,
+  "description": "更新资源的标题、元数据或内容，只更新传入的非空字段",
+  "request": {
+    "headers": {
+      "Authorization": "Bearer {token}"
+    },
+    "pathParams": {
+      "id": "资源ID"
+    },
+    "body": {
+      "title": "资源标题（可选）",
+      "metaJson": "资源元数据JSON字符串（可选）",
+      "contentJson": "资源内容JSON字符串（可选）"
+    }
+  },
+  "response": {
+    "code": 200,
+    "message": "success",
+    "data": {
+      "id": "资源ID",
+      "type": "资源类型",
+      "title": "更新后的标题",
+      "metaJson": "更新后的元数据",
+      "isPublic": 0,
+      "version": 1,
+      "updatedAt": "更新时间"
+    }
+  }
+}

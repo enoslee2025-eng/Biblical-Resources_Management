@@ -1,0 +1,27 @@
+# Docker Compose 配置 - 开发环境
+# 仅包含 MySQL 服务
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: bibledictionary-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: bible_dictionary
+      MYSQL_USER: bible_dictionary
+      MYSQL_PASSWORD: bible_dictionary123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql-init.sql:/docker-entrypoint-initdb.d/00-init-user.sql
+      - ../database/init-db.sql:/docker-entrypoint-initdb.d/01-init-db.sql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql_data:

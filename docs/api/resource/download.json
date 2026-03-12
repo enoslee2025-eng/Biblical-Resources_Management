@@ -1,0 +1,17 @@
+{
+  "name": "公开资源下载",
+  "method": "GET",
+  "path": "/public/api/resource/download/{id}",
+  "auth": false,
+  "description": "下载公开资源的JSON文件，无需登录，仅限已设为公开的资源。供APP扫码导入使用",
+  "request": {
+    "params": {
+      "id": "资源ID（必须是公开资源）"
+    }
+  },
+  "response": {
+    "type": "bible / commentary / dictionary",
+    "meta": "资源元数据对象",
+    "books": "资源内容数组"
+  }
+}

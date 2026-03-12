@@ -1,0 +1,20 @@
+{
+  "name": "导出资源",
+  "method": "GET",
+  "path": "/private/api/resource/export/{id}",
+  "auth": true,
+  "description": "导出资源为标准JSON文件，包含type、meta、books三部分",
+  "request": {
+    "headers": {
+      "Authorization": "Bearer {token}"
+    },
+    "params": {
+      "id": "资源ID"
+    }
+  },
+  "response": {
+    "type": "bible / commentary / dictionary",
+    "meta": "资源元数据对象",
+    "books": "资源内容数组"
+  }
+}

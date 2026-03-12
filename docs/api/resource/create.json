@@ -1,0 +1,31 @@
+{
+  "name": "创建资源",
+  "method": "POST",
+  "path": "/private/api/resource/create",
+  "auth": true,
+  "description": "创建新的圣经译本/注释/词典资源",
+  "request": {
+    "headers": {
+      "Authorization": "Bearer {token}"
+    },
+    "body": {
+      "type": "资源类型：bible / commentary / dictionary",
+      "title": "资源标题",
+      "metaJson": "资源元数据（JSON字符串）"
+    }
+  },
+  "response": {
+    "code": 200,
+    "message": "success",
+    "data": {
+      "id": "资源ID",
+      "type": "资源类型",
+      "title": "资源标题",
+      "metaJson": "元数据",
+      "isPublic": 0,
+      "version": 1,
+      "createdAt": "创建时间",
+      "updatedAt": "更新时间"
+    }
+  }
+}

@@ -1,0 +1,45 @@
+# bible dictionary Service
+# 服务暴露配置
+apiVersion: v1
+kind: Service
+metadata:
+  name: bible dictionary-api
+  namespace: default
+  labels:
+    app: bible dictionary
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app: bible dictionary
+    component: api
+---
+# Ingress 配置（可选，用于外部访问）
+# 需要安装 Ingress Controller（如 Traefik，K3s 默认自带）
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bible dictionary-ingress
+  namespace: default
+  labels:
+    app: bible dictionary
+  annotations:
+    # Traefik 注解（K3s 默认）
+    kubernetes.io/ingress.class: traefik
+spec:
+  rules:
+    - host: bible dictionary.{{DOMAIN}}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: bible dictionary-api
+                port:
+                  number: 8080

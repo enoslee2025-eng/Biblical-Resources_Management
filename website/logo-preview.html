@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logo Preview</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: #f5f5f5;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+
+  /* Logo 容器 */
+  .logo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 16px 8px;
+    background: #fff;
+    cursor: pointer;
+  }
+
+  /* "圣经" 主文字 */
+  .logo-text {
+    font-size: 28px;
+    font-weight: 700;
+    color: #333;
+    letter-spacing: 4px;
+    line-height: 1.2;
+  }
+
+  /* "Bible Pro" 徽标 — 桥拱式底部圆弧 */
+  .logo-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: #fff;
+    background: #b33a2b;
+    padding: 2px 12px 5px;
+    border-radius: 0 0 14px 14px;
+    margin-top: 2px;
+    letter-spacing: 1.5px;
+    line-height: 1.3;
+    text-transform: none;
+  }
+</style>
+</head>
+<body>
+  <!-- Logo 组件 -->
+  <div class="logo">
+    <span class="logo-text">圣经</span>
+    <span class="logo-badge">Bible Pro</span>
+  </div>
+</body>
+</html>

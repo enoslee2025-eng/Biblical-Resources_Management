@@ -1,0 +1,19 @@
+{
+  "name": "APP确认扫码登录",
+  "method": "POST",
+  "path": "/public/api/auth/qr/confirm",
+  "auth": false,
+  "description": "主内圣经APP扫码后调用此接口确认登录，需要传入会话ID、验证码和APP用户的UID",
+  "request": {
+    "body": {
+      "id": "二维码会话ID",
+      "code": "验证码",
+      "uid": "APP用户的UID（Long类型）"
+    }
+  },
+  "response": {
+    "code": 200,
+    "message": "success",
+    "data": null
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "获取资源摘要",
+  "method": "GET",
+  "path": "/private/api/resource/summary/{id}",
+  "auth": true,
+  "description": "获取资源内容摘要统计，包含已编辑书卷数、章数、经文节数等信息，用于列表显示进度和导出预览",
+  "request": {
+    "headers": {
+      "Authorization": "Bearer {token}"
+    },
+    "params": {
+      "id": "资源ID"
+    }
+  },
+  "response": {
+    "code": 200,
+    "message": "success",
+    "data": {
+      "type": "资源类型",
+      "title": "资源标题",
+      "totalBooks": "总书卷数",
+      "filledBooks": "已编辑书卷数",
+      "totalChapters": "总章数",
+      "filledChapters": "已填写章数",
+      "totalVerses": "总经文节数"
+    }
+  }
+}

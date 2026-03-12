@@ -1,0 +1,13 @@
+# bible dictionary API 服务 Dockerfile
+FROM eclipse-temurin:21-jre-alpine
+
+WORKDIR /app
+
+# 复制 Quarkus 应用
+COPY quarkus-app /app/
+
+# 暴露端口
+EXPOSE 8080
+
+# 启动命令
+CMD ["java", "-jar", "quarkus-run.jar"]

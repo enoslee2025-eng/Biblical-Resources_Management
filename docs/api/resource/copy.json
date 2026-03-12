@@ -1,0 +1,29 @@
+{
+  "name": "复制资源",
+  "method": "POST",
+  "path": "/private/api/resource/copy/{id}",
+  "auth": true,
+  "description": "复制指定资源，生成一份副本到自己账号下，标题后加"（副本）"",
+  "request": {
+    "headers": {
+      "Authorization": "Bearer {token}"
+    },
+    "params": {
+      "id": "要复制的资源ID"
+    }
+  },
+  "response": {
+    "code": 200,
+    "message": "success",
+    "data": {
+      "id": "新资源ID",
+      "type": "资源类型",
+      "title": "资源标题（副本）",
+      "metaJson": "元数据",
+      "isPublic": 0,
+      "version": 1,
+      "createdAt": "创建时间",
+      "updatedAt": "更新时间"
+    }
+  }
+}
