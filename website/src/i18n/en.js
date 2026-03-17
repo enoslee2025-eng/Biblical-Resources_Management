@@ -818,6 +818,10 @@ export default {
   block_type_verse_ref: 'Verse',
   block_type_body: 'Body',
   block_type: 'Block Type',
+  view_mode: 'View Mode',
+  view_mode_original: 'Original',
+  view_mode_smart: 'Smart',
+  view_mode_compare: 'Compare',
   // Legacy keys
   commentary_stat_entries: 'Entries',
   commentary_stat_books: 'Books Covered',

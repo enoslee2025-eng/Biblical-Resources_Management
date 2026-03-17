@@ -38,6 +38,9 @@ const currentIndex = ref(0)
 /** 侧边栏展开状态 */
 const sidebarOpen = ref(true)
 
+/** 查看模式：original=原文 smart=智能 compare=对比 */
+const viewMode = ref('smart')
+
 /** 当前段落 */
 const currentSection = computed(() => sections.value[currentIndex.value] || null)
 
@@ -106,6 +109,18 @@ function formatContent(text) {
 
   /* 换行转 <br> */
   return escaped.replace(/\n/g, '<br>')
+}
+
+/**
+ * 将纯文本格式化为 HTML（原文模式，不高亮经文引用）
+ */
+function formatPlainContent(text) {
+  if (!text) return ''
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>')
 }
 
 /** 解析 JSON */
@@ -208,6 +223,31 @@ onMounted(() => { loadDetail() })
         <el-icon :size="18"><ArrowLeft /></el-icon>
         <span class="header-title">{{ resource?.title || '' }}</span>
       </div>
+      <div class="header-center">
+        <div class="mode-switcher" role="tablist" :aria-label="t('view_mode')">
+          <button
+            class="mode-btn"
+            :class="{ 'mode-btn-active': viewMode === 'original' }"
+            @click="viewMode = 'original'"
+            role="tab"
+            :aria-selected="viewMode === 'original'"
+          >{{ t('view_mode_original') }}</button>
+          <button
+            class="mode-btn"
+            :class="{ 'mode-btn-active': viewMode === 'smart' }"
+            @click="viewMode = 'smart'"
+            role="tab"
+            :aria-selected="viewMode === 'smart'"
+          >{{ t('view_mode_smart') }}</button>
+          <button
+            class="mode-btn"
+            :class="{ 'mode-btn-active': viewMode === 'compare' }"
+            @click="viewMode = 'compare'"
+            role="tab"
+            :aria-selected="viewMode === 'compare'"
+          >{{ t('view_mode_compare') }}</button>
+        </div>
+      </div>
       <div class="header-right">
         <span class="header-meta" v-if="docAuthor">{{ docAuthor }}</span>
         <span class="header-divider" v-if="docAuthor">·</span>
@@ -247,20 +287,56 @@ onMounted(() => { loadDetail() })
       </div>
 
       <!-- 主内容区 -->
-      <div class="read-main">
-        <div class="read-content" v-if="currentSection">
+      <div class="read-main" :class="{ 'read-main-compare': viewMode === 'compare' }">
+        <!-- 智能模式（默认） -->
+        <div v-if="viewMode === 'smart'" class="read-content" v-show="currentSection">
           <!-- 块类型标签 -->
-          <div v-if="currentSection.type && currentSection.type !== 'body'" class="content-type-tag" :class="'tag-' + currentSection.type">
+          <div v-if="currentSection && currentSection.type && currentSection.type !== 'body'" class="content-type-tag" :class="'tag-' + currentSection.type">
             {{ getTypeLabel(currentSection.type) }}
           </div>
 
           <!-- 标题：根据块类型使用不同样式 -->
-          <h2 class="content-title" :class="'title-' + (currentSection.type || 'body')">
+          <h2 v-if="currentSection" class="content-title" :class="'title-' + (currentSection.type || 'body')">
             {{ currentSection.title }}
           </h2>
 
           <!-- 内容 -->
-          <div class="content-body" v-html="formatContent(currentSection.content)"></div>
+          <div v-if="currentSection" class="content-body" v-html="formatContent(currentSection.content)"></div>
+        </div>
+
+        <!-- 原文模式 -->
+        <div v-if="viewMode === 'original'" class="read-content" v-show="currentSection">
+          <h2 v-if="currentSection" class="content-title content-title-plain">
+            {{ currentSection.title }}
+          </h2>
+          <div v-if="currentSection" class="content-body content-body-plain" v-html="formatPlainContent(currentSection.content)"></div>
+        </div>
+
+        <!-- 对比模式 -->
+        <div v-if="viewMode === 'compare'" class="compare-container" v-show="currentSection">
+          <!-- 左侧：原文 -->
+          <div class="compare-pane">
+            <div class="compare-pane-label">{{ t('view_mode_original') }}</div>
+            <div class="compare-pane-content">
+              <h2 v-if="currentSection" class="content-title content-title-plain">
+                {{ currentSection.title }}
+              </h2>
+              <div v-if="currentSection" class="content-body content-body-plain" v-html="formatPlainContent(currentSection.content)"></div>
+            </div>
+          </div>
+          <!-- 右侧：智能排版 -->
+          <div class="compare-pane">
+            <div class="compare-pane-label">{{ t('view_mode_smart') }}</div>
+            <div class="compare-pane-content">
+              <div v-if="currentSection && currentSection.type && currentSection.type !== 'body'" class="content-type-tag" :class="'tag-' + currentSection.type">
+                {{ getTypeLabel(currentSection.type) }}
+              </div>
+              <h2 v-if="currentSection" class="content-title" :class="'title-' + (currentSection.type || 'body')">
+                {{ currentSection.title }}
+              </h2>
+              <div v-if="currentSection" class="content-body" v-html="formatContent(currentSection.content)"></div>
+            </div>
+          </div>
         </div>
 
         <!-- 上下翻页 -->
@@ -317,6 +393,42 @@ onMounted(() => { loadDetail() })
   font-size: 15px;
   font-weight: 600;
   color: var(--church-charcoal, #3a3a3a);
+}
+
+.header-center {
+  display: flex;
+  align-items: center;
+}
+
+.mode-switcher {
+  display: flex;
+  background: var(--church-cream, #f5f0eb);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.mode-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--church-warm-gray, #8a8178);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.mode-btn:hover {
+  color: var(--church-charcoal, #3a3a3a);
+}
+
+.mode-btn-active {
+  background: #fff;
+  color: #5a8a6e;
+  font-weight: 500;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .header-right {
@@ -570,14 +682,76 @@ onMounted(() => { loadDetail() })
   font-size: 16px;
 }
 
+/* 原文模式样式 */
+.content-title-plain {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--church-charcoal, #3a3a3a);
+  border-bottom: 1px solid var(--church-border, #e0d8cf);
+}
+
+.content-body-plain {
+  font-size: 15px;
+  color: var(--church-charcoal, #3a3a3a);
+  line-height: 1.8;
+}
+
+/* 对比模式 */
+.read-main-compare {
+  overflow: hidden;
+}
+
+.compare-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  gap: 0;
+}
+
+.compare-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--church-border, #e0d8cf);
+}
+
+.compare-pane:last-child {
+  border-right: none;
+}
+
+.compare-pane-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  padding: 6px 0;
+  color: var(--church-warm-gray, #8a8178);
+  background: rgba(90,138,110,0.04);
+  border-bottom: 1px solid var(--church-border, #e0d8cf);
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.compare-pane-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 20px;
+}
+
 @media (max-width: 768px) {
   .read-sidebar { width: 200px; }
   .read-content { padding: 24px 16px; }
   .read-nav { padding: 12px 16px; }
+  .compare-pane-content { padding: 16px 12px; }
+  .mode-btn { padding: 4px 8px; font-size: 11px; }
 }
 
 @media (max-width: 480px) {
   .read-sidebar { display: none; }
   .sidebar-toggle { display: none; }
+  .compare-container { flex-direction: column; }
+  .compare-pane { border-right: none; border-bottom: 1px solid var(--church-border, #e0d8cf); }
+  .compare-pane:last-child { border-bottom: none; }
 }
 </style>
