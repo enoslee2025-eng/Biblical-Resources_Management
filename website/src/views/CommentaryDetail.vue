@@ -39,6 +39,18 @@ const totalChars = computed(() => {
   return sections.value.reduce((sum, s) => sum + (s.content || '').length, 0)
 })
 
+/** 文档作者（从块类型中提取） */
+const docAuthor = computed(() => {
+  const authorBlock = sections.value.find(s => s.type === 'author')
+  if (authorBlock) return authorBlock.title
+  return meta.value.author || ''
+})
+
+/** 经文引用数量 */
+const verseRefCount = computed(() => {
+  return sections.value.filter(s => s.type === 'verse_ref').length
+})
+
 /**
  * 兼容旧数据格式
  * 旧格式 [{verse, content}] → 新格式 [{title, content}]
@@ -103,6 +115,20 @@ async function handleDelete() {
       ElMessage.error(t('detail_delete_fail'))
     }
   }
+}
+
+/** 获取块类型的中文标签 */
+function getTypeLabel(type) {
+  const labels = {
+    document_title: t('block_type_doc_title'),
+    author: t('block_type_author'),
+    preface: t('block_type_preface'),
+    chapter_title: t('block_type_chapter'),
+    section_title: t('block_type_section'),
+    verse_ref: t('block_type_verse_ref'),
+    body: t('block_type_body')
+  }
+  return labels[type] || ''
 }
 
 /** 点击段落跳转到阅读页 */
@@ -182,6 +208,9 @@ onMounted(() => { loadDetail() })
           </div>
         </div>
 
+        <!-- 作者信息 -->
+        <div v-if="docAuthor" class="info-author">{{ t('block_type_author') }}: {{ docAuthor }}</div>
+
         <!-- 统计数据网格 -->
         <div class="stats-grid">
           <div class="stats-item">
@@ -191,6 +220,10 @@ onMounted(() => { loadDetail() })
           <div class="stats-item">
             <span class="stats-value">{{ totalChars.toLocaleString() }}</span>
             <span class="stats-label">{{ t('commentary_stat_chars') }}</span>
+          </div>
+          <div v-if="verseRefCount > 0" class="stats-item">
+            <span class="stats-value">{{ verseRefCount }}</span>
+            <span class="stats-label">{{ t('commentary_stat_verse_refs') }}</span>
           </div>
         </div>
 
@@ -213,7 +246,10 @@ onMounted(() => { loadDetail() })
           >
             <span class="section-index">{{ idx + 1 }}</span>
             <div class="section-info">
-              <span class="section-name">{{ sec.title || t('commentary_untitled_section') }}</span>
+              <div class="section-name-row">
+                <span v-if="sec.type && sec.type !== 'body'" class="section-type-badge" :class="'badge-' + sec.type">{{ getTypeLabel(sec.type) }}</span>
+                <span class="section-name">{{ sec.title || t('commentary_untitled_section') }}</span>
+              </div>
               <span class="section-preview">{{ (sec.content || '').slice(0, 60) }}{{ (sec.content || '').length > 60 ? '...' : '' }}</span>
             </div>
             <el-icon class="section-arrow"><ArrowRight /></el-icon>
@@ -278,7 +314,9 @@ onMounted(() => { loadDetail() })
 .action-pill:hover { border-color: #5a8a6e; color: #5a8a6e; }
 .action-pill-danger:hover { border-color: var(--app-danger, #c05050); color: var(--app-danger, #c05050); }
 
-.stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 14px 0; border-top: 1px solid var(--church-border, #e0d8cf); border-bottom: 1px solid var(--church-border, #e0d8cf); }
+.info-author { font-size: 13px; color: var(--church-warm-gray, #8a8178); padding: 8px 0 0; }
+
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 12px; padding: 14px 0; border-top: 1px solid var(--church-border, #e0d8cf); border-bottom: 1px solid var(--church-border, #e0d8cf); }
 .stats-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .stats-value { font-size: 16px; font-weight: 600; color: var(--church-charcoal, #3a3a3a); }
 .stats-label { font-size: 10px; color: var(--church-warm-gray, #8a8178); letter-spacing: 1px; text-transform: uppercase; }
@@ -295,6 +333,14 @@ onMounted(() => { loadDetail() })
 .section-item + .section-item { border-top: 1px solid var(--church-border, #e0d8cf); }
 .section-index { width: 30px; height: 30px; border-radius: 4px; background: rgba(90,138,110,0.06); color: #5a8a6e; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .section-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.section-name-row { display: flex; align-items: center; gap: 6px; }
+.section-type-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; color: #fff; flex-shrink: 0; }
+.badge-document_title { background: #5a8a6e; }
+.badge-author { background: #8a8178; }
+.badge-preface { background: #6b8da6; }
+.badge-chapter_title { background: #7a6b8a; }
+.badge-section_title { background: #8a7b6b; }
+.badge-verse_ref { background: #8b6914; }
 .section-name { font-size: 14px; font-weight: 500; color: var(--church-charcoal, #3a3a3a); }
 .section-preview { font-size: 12px; color: var(--church-warm-gray, #8a8178); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .section-arrow { color: var(--app-text-tertiary, #9a948e); flex-shrink: 0; }

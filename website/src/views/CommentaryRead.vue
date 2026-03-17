@@ -3,6 +3,7 @@
  * 注释阅读页面
  * 按段落/主题浏览注释内容
  * 左侧目录导航，右侧内容阅读
+ * 支持块类型识别和经文引用高亮
  */
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -10,7 +11,7 @@ import { useI18n } from 'vue-i18n'
 import { getResourceDetail } from '@/api/resource'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
-import { parseCommentaryText } from '@/utils/fileImport'
+import { parseCommentaryText, findAllScriptureRefs } from '@/utils/fileImport'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,7 +26,7 @@ const resource = ref(null)
 /** 元数据 */
 const meta = ref({})
 
-/** 注释段落列表 [{title, content}] */
+/** 注释段落列表 [{type?, title, content}] */
 const sections = ref([])
 
 /** 加载状态 */
@@ -46,6 +47,18 @@ const hasPrev = computed(() => currentIndex.value > 0)
 /** 是否有下一个段落 */
 const hasNext = computed(() => currentIndex.value < sections.value.length - 1)
 
+/** 从段落中提取文档作者（如有） */
+const docAuthor = computed(() => {
+  const authorBlock = sections.value.find(s => s.type === 'author')
+  if (authorBlock) return authorBlock.title
+  return meta.value.author || ''
+})
+
+/** 总字数 */
+const totalChars = computed(() => {
+  return sections.value.reduce((sum, s) => sum + (s.content || '').length, 0)
+})
+
 /**
  * 兼容旧数据格式
  */
@@ -54,20 +67,43 @@ function normalizeEntries(data) {
   return data.map(item => {
     if (item.title !== undefined) return item
     return {
+      type: item.type || 'body',
       title: item.verse || item.title || '',
       content: item.content || ''
     }
   })
 }
 
-/** 将纯文本格式化为带换行的 HTML */
+/**
+ * 将纯文本格式化为带换行和经文引用高亮的 HTML
+ */
 function formatContent(text) {
   if (!text) return ''
   /* 转义 HTML 特殊字符 */
-  const escaped = text
+  let escaped = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+
+  /* 高亮经文引用 */
+  const refs = findAllScriptureRefs(text)
+  if (refs.length > 0) {
+    /* 从后往前替换，避免位置偏移 */
+    const sortedRefs = [...refs].sort((a, b) => b.start - a.start)
+    for (const ref of sortedRefs) {
+      /* 需要在转义后的文本中计算偏移量 */
+      const originalPart = text.substring(ref.start, ref.end)
+      const escapedPart = originalPart
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+      escaped = escaped.replace(
+        escapedPart,
+        `<span class="verse-highlight">${escapedPart}</span>`
+      )
+    }
+  }
+
   /* 换行转 <br> */
   return escaped.replace(/\n/g, '<br>')
 }
@@ -75,6 +111,34 @@ function formatContent(text) {
 /** 解析 JSON */
 function tryParseJson(str) {
   try { return JSON.parse(str) } catch { return null }
+}
+
+/** 获取块类型的中文标签 */
+function getTypeLabel(type) {
+  const labels = {
+    document_title: t('block_type_doc_title'),
+    author: t('block_type_author'),
+    preface: t('block_type_preface'),
+    chapter_title: t('block_type_chapter'),
+    section_title: t('block_type_section'),
+    verse_ref: t('block_type_verse_ref'),
+    body: t('block_type_body')
+  }
+  return labels[type] || ''
+}
+
+/** 获取块类型对应的目录图标 */
+function getTypeIcon(type) {
+  const icons = {
+    document_title: '📖',
+    author: '✍',
+    preface: '📝',
+    chapter_title: '📑',
+    section_title: '§',
+    verse_ref: '📜',
+    body: ''
+  }
+  return icons[type] || ''
 }
 
 /** 加载资源详情 */
@@ -145,6 +209,8 @@ onMounted(() => { loadDetail() })
         <span class="header-title">{{ resource?.title || '' }}</span>
       </div>
       <div class="header-right">
+        <span class="header-meta" v-if="docAuthor">{{ docAuthor }}</span>
+        <span class="header-divider" v-if="docAuthor">·</span>
         <span class="header-progress" v-if="sections.length > 0">
           {{ currentIndex + 1 }} / {{ sections.length }}
         </span>
@@ -164,11 +230,17 @@ onMounted(() => { loadDetail() })
               v-for="(sec, idx) in sections"
               :key="idx"
               class="sidebar-item"
-              :class="{ 'sidebar-item-active': idx === currentIndex }"
+              :class="{
+                'sidebar-item-active': idx === currentIndex,
+                ['sidebar-type-' + (sec.type || 'body')]: true
+              }"
               @click="goToSection(idx)"
             >
               <span class="sidebar-idx">{{ idx + 1 }}</span>
-              <span class="sidebar-name">{{ sec.title || t('commentary_untitled_section') }}</span>
+              <span class="sidebar-name">
+                <span v-if="sec.type && sec.type !== 'body'" class="sidebar-type-icon">{{ getTypeIcon(sec.type) }}</span>
+                {{ sec.title || t('commentary_untitled_section') }}
+              </span>
             </div>
           </div>
         </div>
@@ -177,7 +249,17 @@ onMounted(() => { loadDetail() })
       <!-- 主内容区 -->
       <div class="read-main">
         <div class="read-content" v-if="currentSection">
-          <h2 class="content-title">{{ currentSection.title }}</h2>
+          <!-- 块类型标签 -->
+          <div v-if="currentSection.type && currentSection.type !== 'body'" class="content-type-tag" :class="'tag-' + currentSection.type">
+            {{ getTypeLabel(currentSection.type) }}
+          </div>
+
+          <!-- 标题：根据块类型使用不同样式 -->
+          <h2 class="content-title" :class="'title-' + (currentSection.type || 'body')">
+            {{ currentSection.title }}
+          </h2>
+
+          <!-- 内容 -->
           <div class="content-body" v-html="formatContent(currentSection.content)"></div>
         </div>
 
@@ -232,11 +314,25 @@ onMounted(() => { loadDetail() })
 .header-left:hover { opacity: 0.7; }
 
 .header-title {
-  font-family: var(--font-heading);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--church-charcoal, #3a3a3a);
-  letter-spacing: 1px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.header-meta {
+  font-size: 13px;
+  color: var(--church-warm-gray, #8a8178);
+}
+
+.header-divider {
+  color: var(--church-warm-gray, #8a8178);
+  font-size: 12px;
 }
 
 .header-progress {
@@ -290,11 +386,9 @@ onMounted(() => { loadDetail() })
 }
 
 .sidebar-title {
-  font-family: var(--font-heading);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--church-charcoal, #3a3a3a);
-  letter-spacing: 1px;
   margin: 0 0 12px 0;
 }
 
@@ -320,6 +414,12 @@ onMounted(() => { loadDetail() })
   font-weight: 500;
 }
 
+/* 目录中不同类型的样式 */
+.sidebar-type-document_title .sidebar-name,
+.sidebar-type-chapter_title .sidebar-name { font-weight: 600; }
+.sidebar-type-author .sidebar-name { font-style: italic; color: var(--church-warm-gray, #8a8178); }
+.sidebar-type-verse_ref .sidebar-name { color: #8b6914; }
+
 .sidebar-idx {
   width: 22px;
   height: 22px;
@@ -339,7 +439,12 @@ onMounted(() => { loadDetail() })
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
+
+.sidebar-type-icon { font-size: 12px; flex-shrink: 0; }
 
 /* 主内容区 */
 .read-main {
@@ -358,8 +463,25 @@ onMounted(() => { loadDetail() })
   width: 100%;
 }
 
+/* 块类型标签 */
+.content-type-tag {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  margin-bottom: 10px;
+  color: #fff;
+}
+.tag-document_title { background: #5a8a6e; }
+.tag-author { background: #8a8178; }
+.tag-preface { background: #6b8da6; }
+.tag-chapter_title { background: #7a6b8a; }
+.tag-section_title { background: #8a7b6b; }
+.tag-verse_ref { background: #8b6914; }
+
+/* 标题样式：根据块类型差异化 */
 .content-title {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--church-charcoal, #3a3a3a);
   margin: 0 0 20px 0;
@@ -367,11 +489,49 @@ onMounted(() => { loadDetail() })
   border-bottom: 1px solid var(--church-border, #e0d8cf);
 }
 
+.title-document_title {
+  font-size: 20px;
+  text-align: center;
+  border-bottom: none;
+  padding-bottom: 4px;
+}
+
+.title-author {
+  font-size: 14px;
+  font-weight: 400;
+  text-align: center;
+  color: var(--church-warm-gray, #8a8178);
+  border-bottom: none;
+}
+
+.title-chapter_title {
+  font-size: 18px;
+  color: #5a8a6e;
+}
+
+.title-verse_ref {
+  font-size: 15px;
+  color: #8b6914;
+  background: rgba(139,105,20,0.06);
+  padding: 8px 12px;
+  border-radius: 4px;
+  border-bottom: none;
+}
+
 .content-body {
   font-size: 15px;
   color: var(--church-charcoal, #3a3a3a);
   line-height: 1.8;
   word-break: break-word;
+}
+
+/* 经文引用高亮 */
+.content-body :deep(.verse-highlight) {
+  color: #8b6914;
+  font-weight: 500;
+  background: rgba(139,105,20,0.08);
+  padding: 1px 3px;
+  border-radius: 2px;
 }
 
 /* 翻页导航 */

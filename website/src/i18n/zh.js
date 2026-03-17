@@ -813,6 +813,15 @@ export default {
   commentary_section_title_required: '请输入段落标题',
   commentary_prev_section: '上一段',
   commentary_next_section: '下一段',
+  commentary_stat_verse_refs: '经文引用',
+  // 块类型标签
+  block_type_doc_title: '标题',
+  block_type_author: '作者',
+  block_type_preface: '前言',
+  block_type_chapter: '章节',
+  block_type_section: '小节',
+  block_type_verse_ref: '经文',
+  block_type_body: '正文',
   // 保留旧key兼容
   commentary_stat_entries: '注释条目',
   commentary_stat_books: '已覆盖书卷',
