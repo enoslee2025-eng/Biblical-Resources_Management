@@ -401,14 +401,15 @@ async function handleWordSelect(e) {
       const result = await mammoth.extractRawText({ arrayBuffer })
       text = result.value
     } catch {
-      if (isOldDoc) {
-        /* 旧版 .doc 格式，调用后端 Apache POI 解析 */
-        progressText.value = t('import_doc_server_parsing')
-        const res = await parseDocFile(file)
-        text = res.data.text
-      } else {
-        throw new Error('docx parse failed')
-      }
+      /* mammoth 解析失败 */
+      text = ''
+    }
+
+    /* mammoth 返回空内容或失败，且是 .doc 格式 → 调用后端 Apache POI 解析 */
+    if ((!text || !text.trim()) && isOldDoc) {
+      progressText.value = t('import_doc_server_parsing')
+      const res = await parseDocFile(file)
+      text = res.data?.text || ''
     }
 
     if (!text || !text.trim()) {

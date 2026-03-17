@@ -197,8 +197,13 @@ function handleAdd() {
   router.push(config.value.addPath)
 }
 
-/** 打开导入对话框 */
+/** 打开导入对话框（注释类型使用专用智能导入页） */
 function handleImport() {
+  if (resourceType.value === 'commentary') {
+    /* 注释资源使用专用导入页面（支持智能经文引用解析） */
+    router.push('/commentary/import')
+    return
+  }
   importDialogRef.value?.open()
 }
 

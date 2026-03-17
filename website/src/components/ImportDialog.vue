@@ -191,15 +191,20 @@ async function parseFile(file) {
     case 'doc':
       /* 先尝试 mammoth（部分 .doc 实际是 docx 格式），失败则调用后端 Apache POI 解析 */
       try {
-        return await parseDocx(file)
+        const docxResult = await parseDocx(file)
+        /* mammoth 返回空内容说明不是 docx 格式，需要走后端解析 */
+        if (docxResult && docxResult.trim().length > 0) return docxResult
       } catch {
-        try {
-          progressText.value = t('import_doc_server_parsing')
-          const res = await parseDocFile(file)
-          return res.data.text
-        } catch (e) {
-          throw new Error(e.message || t('import_doc_not_supported'))
-        }
+        /* mammoth 解析失败，继续走后端 */
+      }
+      /* 调用后端 Apache POI 解析真正的 .doc 文件 */
+      try {
+        progressText.value = t('import_doc_server_parsing')
+        const res = await parseDocFile(file)
+        if (res.data && res.data.text) return res.data.text
+        throw new Error(t('import_doc_not_supported'))
+      } catch (e) {
+        throw new Error(e.message || t('import_doc_not_supported'))
       }
     case 'docx':
       return await parseDocx(file)
