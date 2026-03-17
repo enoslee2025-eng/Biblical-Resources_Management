@@ -1,16 +1,16 @@
 <script setup>
 /**
  * 注释阅读页面
- * 按段落/主题浏览注释内容
- * 左侧目录导航，右侧内容阅读
- * 支持块类型识别和经文引用高亮
+ * 连续滚动浏览所有注释内容
+ * 左侧目录导航定位，右侧连续内容
+ * 支持块类型识别、经文引用高亮、三种查看模式
+ * 支持从阅读页直接编辑
  */
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getResourceDetail } from '@/api/resource'
-import { ElMessage } from 'element-plus'
-import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
+import { ArrowLeft } from '@element-plus/icons-vue'
 import { parseCommentaryText, findAllScriptureRefs } from '@/utils/fileImport'
 
 const route = useRoute()
@@ -32,7 +32,7 @@ const sections = ref([])
 /** 加载状态 */
 const loading = ref(false)
 
-/** 当前选中的段落索引 */
+/** 当前可见的段落索引（通过滚动检测） */
 const currentIndex = ref(0)
 
 /** 侧边栏展开状态 */
@@ -41,25 +41,17 @@ const sidebarOpen = ref(true)
 /** 查看模式：original=原文 smart=智能 compare=对比 */
 const viewMode = ref('smart')
 
-/** 当前段落 */
-const currentSection = computed(() => sections.value[currentIndex.value] || null)
+/** 是否正在程序滚动（避免滚动检测干扰） */
+const isScrolling = ref(false)
 
-/** 是否有上一个段落 */
-const hasPrev = computed(() => currentIndex.value > 0)
-
-/** 是否有下一个段落 */
-const hasNext = computed(() => currentIndex.value < sections.value.length - 1)
+/** 滚动容器 ref */
+const scrollContainer = ref(null)
 
 /** 从段落中提取文档作者（如有） */
 const docAuthor = computed(() => {
   const authorBlock = sections.value.find(s => s.type === 'author')
   if (authorBlock) return authorBlock.title
   return meta.value.author || ''
-})
-
-/** 总字数 */
-const totalChars = computed(() => {
-  return sections.value.reduce((sum, s) => sum + (s.content || '').length, 0)
 })
 
 /**
@@ -94,7 +86,6 @@ function formatContent(text) {
     /* 从后往前替换，避免位置偏移 */
     const sortedRefs = [...refs].sort((a, b) => b.start - a.start)
     for (const ref of sortedRefs) {
-      /* 需要在转义后的文本中计算偏移量 */
       const originalPart = text.substring(ref.start, ref.end)
       const escapedPart = originalPart
         .replace(/&/g, '&amp;')
@@ -179,7 +170,7 @@ async function loadDetail() {
     /* 从 URL 参数中读取初始段落位置 */
     const sectionParam = parseInt(route.query.section)
     if (!isNaN(sectionParam) && sectionParam >= 0 && sectionParam < sections.value.length) {
-      currentIndex.value = sectionParam
+      nextTick(() => scrollToSection(sectionParam))
     }
   } catch (e) {
     console.error('加载详情失败:', e)
@@ -188,28 +179,48 @@ async function loadDetail() {
   }
 }
 
-/** 切换到指定段落 */
-function goToSection(index) {
+/** 滚动到指定段落 */
+function scrollToSection(index) {
+  const el = document.getElementById(`section-${index}`)
+  if (!el) return
+  isScrolling.value = true
   currentIndex.value = index
-  nextTick(() => {
-    const el = document.querySelector('.read-content')
-    if (el) el.scrollTop = 0
-  })
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  /* 滚动动画结束后恢复检测 */
+  setTimeout(() => { isScrolling.value = false }, 600)
 }
 
-/** 上一个段落 */
-function goPrev() {
-  if (hasPrev.value) goToSection(currentIndex.value - 1)
-}
+/** 滚动时检测当前可见段落 */
+function onContentScroll() {
+  if (isScrolling.value) return
+  const container = scrollContainer.value
+  if (!container) return
 
-/** 下一个段落 */
-function goNext() {
-  if (hasNext.value) goToSection(currentIndex.value + 1)
+  const containerTop = container.getBoundingClientRect().top
+  let closestIdx = 0
+  let closestDist = Infinity
+
+  for (let i = 0; i < sections.value.length; i++) {
+    const el = document.getElementById(`section-${i}`)
+    if (!el) continue
+    const dist = Math.abs(el.getBoundingClientRect().top - containerTop - 20)
+    if (dist < closestDist) {
+      closestDist = dist
+      closestIdx = i
+    }
+  }
+
+  currentIndex.value = closestIdx
 }
 
 /** 返回详情页 */
 function goBack() {
   router.push(`/commentary/detail/${resourceId}`)
+}
+
+/** 跳转到编辑页 */
+function goEdit() {
+  router.push(`/commentary/edit/${resourceId}`)
 }
 
 onMounted(() => { loadDetail() })
@@ -254,6 +265,9 @@ onMounted(() => { loadDetail() })
         <span class="header-progress" v-if="sections.length > 0">
           {{ currentIndex + 1 }} / {{ sections.length }}
         </span>
+        <button class="edit-btn" @click="goEdit" :aria-label="t('edit')">
+          {{ t('edit') }}
+        </button>
       </div>
     </div>
 
@@ -274,7 +288,7 @@ onMounted(() => { loadDetail() })
                 'sidebar-item-active': idx === currentIndex,
                 ['sidebar-type-' + (sec.type || 'body')]: true
               }"
-              @click="goToSection(idx)"
+              @click="scrollToSection(idx)"
             >
               <span class="sidebar-idx">{{ idx + 1 }}</span>
               <span class="sidebar-name">
@@ -286,68 +300,76 @@ onMounted(() => { loadDetail() })
         </div>
       </div>
 
-      <!-- 主内容区 -->
+      <!-- 主内容区：连续滚动 -->
       <div class="read-main" :class="{ 'read-main-compare': viewMode === 'compare' }">
-        <!-- 智能模式（默认） -->
-        <div v-if="viewMode === 'smart'" class="read-content" v-show="currentSection">
-          <!-- 块类型标签 -->
-          <div v-if="currentSection && currentSection.type && currentSection.type !== 'body'" class="content-type-tag" :class="'tag-' + currentSection.type">
-            {{ getTypeLabel(currentSection.type) }}
+
+        <!-- 原文模式 / 智能模式：连续滚动 -->
+        <div
+          v-if="viewMode !== 'compare'"
+          ref="scrollContainer"
+          class="read-content"
+          @scroll="onContentScroll"
+        >
+          <div
+            v-for="(sec, idx) in sections"
+            :key="idx"
+            :id="'section-' + idx"
+            class="section-block"
+          >
+            <!-- 智能模式 -->
+            <template v-if="viewMode === 'smart'">
+              <div v-if="sec.type && sec.type !== 'body'" class="content-type-tag" :class="'tag-' + sec.type">
+                {{ getTypeLabel(sec.type) }}
+              </div>
+              <h2 class="content-title" :class="'title-' + (sec.type || 'body')">
+                {{ sec.title }}
+              </h2>
+              <div class="content-body" v-html="formatContent(sec.content)"></div>
+            </template>
+
+            <!-- 原文模式 -->
+            <template v-else>
+              <h2 class="content-title content-title-plain">{{ sec.title }}</h2>
+              <div class="content-body content-body-plain" v-html="formatPlainContent(sec.content)"></div>
+            </template>
           </div>
-
-          <!-- 标题：根据块类型使用不同样式 -->
-          <h2 v-if="currentSection" class="content-title" :class="'title-' + (currentSection.type || 'body')">
-            {{ currentSection.title }}
-          </h2>
-
-          <!-- 内容 -->
-          <div v-if="currentSection" class="content-body" v-html="formatContent(currentSection.content)"></div>
         </div>
 
-        <!-- 原文模式 -->
-        <div v-if="viewMode === 'original'" class="read-content" v-show="currentSection">
-          <h2 v-if="currentSection" class="content-title content-title-plain">
-            {{ currentSection.title }}
-          </h2>
-          <div v-if="currentSection" class="content-body content-body-plain" v-html="formatPlainContent(currentSection.content)"></div>
-        </div>
-
-        <!-- 对比模式 -->
-        <div v-if="viewMode === 'compare'" class="compare-container" v-show="currentSection">
+        <!-- 对比模式：左右分栏，各自连续滚动 -->
+        <div v-if="viewMode === 'compare'" class="compare-container">
           <!-- 左侧：原文 -->
           <div class="compare-pane">
             <div class="compare-pane-label">{{ t('view_mode_original') }}</div>
-            <div class="compare-pane-content">
-              <h2 v-if="currentSection" class="content-title content-title-plain">
-                {{ currentSection.title }}
-              </h2>
-              <div v-if="currentSection" class="content-body content-body-plain" v-html="formatPlainContent(currentSection.content)"></div>
+            <div class="compare-pane-content" @scroll="onContentScroll" ref="scrollContainer">
+              <div
+                v-for="(sec, idx) in sections"
+                :key="'orig-' + idx"
+                :id="'section-' + idx"
+                class="section-block"
+              >
+                <h2 class="content-title content-title-plain">{{ sec.title }}</h2>
+                <div class="content-body content-body-plain" v-html="formatPlainContent(sec.content)"></div>
+              </div>
             </div>
           </div>
           <!-- 右侧：智能排版 -->
           <div class="compare-pane">
             <div class="compare-pane-label">{{ t('view_mode_smart') }}</div>
             <div class="compare-pane-content">
-              <div v-if="currentSection && currentSection.type && currentSection.type !== 'body'" class="content-type-tag" :class="'tag-' + currentSection.type">
-                {{ getTypeLabel(currentSection.type) }}
+              <div
+                v-for="(sec, idx) in sections"
+                :key="'smart-' + idx"
+                class="section-block"
+              >
+                <div v-if="sec.type && sec.type !== 'body'" class="content-type-tag" :class="'tag-' + sec.type">
+                  {{ getTypeLabel(sec.type) }}
+                </div>
+                <h2 class="content-title" :class="'title-' + (sec.type || 'body')">
+                  {{ sec.title }}
+                </h2>
+                <div class="content-body" v-html="formatContent(sec.content)"></div>
               </div>
-              <h2 v-if="currentSection" class="content-title" :class="'title-' + (currentSection.type || 'body')">
-                {{ currentSection.title }}
-              </h2>
-              <div v-if="currentSection" class="content-body" v-html="formatContent(currentSection.content)"></div>
             </div>
-          </div>
-        </div>
-
-        <!-- 上下翻页 -->
-        <div class="read-nav">
-          <div class="nav-btn" :class="{ 'nav-btn-disabled': !hasPrev }" @click="goPrev">
-            <el-icon :size="14"><ArrowLeft /></el-icon>
-            {{ t('commentary_prev_section') }}
-          </div>
-          <div class="nav-btn" :class="{ 'nav-btn-disabled': !hasNext }" @click="goNext">
-            {{ t('commentary_next_section') }}
-            <el-icon :size="14"><ArrowRight /></el-icon>
           </div>
         </div>
       </div>
@@ -450,6 +472,24 @@ onMounted(() => { loadDetail() })
 .header-progress {
   font-size: 13px;
   color: var(--church-warm-gray, #8a8178);
+}
+
+/* 编辑按钮 */
+.edit-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+  border: 1px solid #5a8a6e;
+  border-radius: 4px;
+  background: transparent;
+  color: #5a8a6e;
+  cursor: pointer;
+  margin-left: 8px;
+  transition: all 0.2s;
+}
+
+.edit-btn:hover {
+  background: #5a8a6e;
+  color: #fff;
 }
 
 .read-body {
@@ -575,6 +615,16 @@ onMounted(() => { loadDetail() })
   width: 100%;
 }
 
+/* 段落块：连续排列 */
+.section-block {
+  margin-bottom: 32px;
+  scroll-margin-top: 20px;
+}
+
+.section-block:last-child {
+  margin-bottom: 80px;
+}
+
 /* 块类型标签 */
 .content-type-tag {
   display: inline-block;
@@ -596,8 +646,8 @@ onMounted(() => { loadDetail() })
   font-size: 16px;
   font-weight: 600;
   color: var(--church-charcoal, #3a3a3a);
-  margin: 0 0 20px 0;
-  padding-bottom: 12px;
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--church-border, #e0d8cf);
 }
 
@@ -644,42 +694,6 @@ onMounted(() => { loadDetail() })
   background: rgba(139,105,20,0.08);
   padding: 1px 3px;
   border-radius: 2px;
-}
-
-/* 翻页导航 */
-.read-nav {
-  display: flex;
-  justify-content: space-between;
-  padding: 12px 40px;
-  border-top: 1px solid var(--church-border, #e0d8cf);
-  background: #fff;
-  flex-shrink: 0;
-}
-
-.nav-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 20px;
-  border: 1px solid var(--church-border, #e0d8cf);
-  border-radius: 4px;
-  font-size: 13px;
-  color: #5a8a6e;
-  cursor: pointer;
-  transition: all 0.2s;
-  user-select: none;
-}
-
-.nav-btn:hover { background: rgba(90,138,110,0.06); border-color: #5a8a6e; }
-.nav-btn-disabled { opacity: 0.3; pointer-events: none; }
-
-.empty-state {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--app-text-tertiary, #9a948e);
-  font-size: 16px;
 }
 
 /* 原文模式样式 */
@@ -739,10 +753,18 @@ onMounted(() => { loadDetail() })
   padding: 24px 20px;
 }
 
+.empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-text-tertiary, #9a948e);
+  font-size: 16px;
+}
+
 @media (max-width: 768px) {
   .read-sidebar { width: 200px; }
   .read-content { padding: 24px 16px; }
-  .read-nav { padding: 12px 16px; }
   .compare-pane-content { padding: 16px 12px; }
   .mode-btn { padding: 4px 8px; font-size: 11px; }
 }
@@ -753,5 +775,6 @@ onMounted(() => { loadDetail() })
   .compare-container { flex-direction: column; }
   .compare-pane { border-right: none; border-bottom: 1px solid var(--church-border, #e0d8cf); }
   .compare-pane:last-child { border-bottom: none; }
+  .header-title { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 </style>
