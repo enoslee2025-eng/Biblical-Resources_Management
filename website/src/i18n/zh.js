@@ -594,6 +594,7 @@ export default {
   import_size_limit: '文件大小不能超过 50MB',
   import_json_format_error: 'JSON 格式不正确',
   import_doc_not_supported: '不支持旧版 .doc 格式，请用 Word 打开后「另存为」.docx 格式再导入',
+  import_doc_server_parsing: '正在服务端解析 .doc 文件...',
   import_unsupported_file: '不支持的文件格式',
   import_parsing_file_msg: '正在解析文件...',
   import_parse_file_error: '解析失败：{error}',

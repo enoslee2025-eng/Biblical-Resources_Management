@@ -482,6 +482,7 @@ export default {
   import_format_only: 'Only txt, docx, pdf, json supported',
   import_size_limit: 'File size max 50MB',
   import_json_format_error: 'Invalid JSON format',
+  import_doc_server_parsing: 'กำลังแยกวิเคราะห์ไฟล์ .doc บนเซิร์ฟเวอร์...',
   import_unsupported_file: 'Unsupported file format',
   import_parsing_file_msg: 'Parsing file...',
   import_parse_file_error: 'Parse failed: {error}',

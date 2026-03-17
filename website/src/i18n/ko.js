@@ -482,6 +482,7 @@ export default {
   import_format_only: 'txt, docx, pdf, json 형식만 지원',
   import_size_limit: '파일 크기는 50MB 이하',
   import_json_format_error: '잘못된 JSON 형식',
+  import_doc_server_parsing: '서버에서 .doc 파일 분석 중...',
   import_unsupported_file: '지원하지 않는 파일 형식',
   import_parsing_file_msg: '파일 분석 중...',
   import_parse_file_error: '분석 실패: {error}',

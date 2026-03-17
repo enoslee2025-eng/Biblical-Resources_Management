@@ -141,6 +141,20 @@ export function importResource(formData) {
 }
 
 /**
+ * 解析 .doc 文件（服务端用 Apache POI 提取文本）
+ * @param {File} file .doc 文件
+ * @returns {{ text: string }} 提取的纯文本
+ */
+export function parseDocFile(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.post('/private/api/resource/parse-doc', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000
+  })
+}
+
+/**
  * 获取资源下载信息（公开接口，供 APP 扫码后调用）
  * 返回资源元数据 + 文件下载地址
  * @param {number} id 资源ID

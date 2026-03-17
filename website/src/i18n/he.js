@@ -398,6 +398,7 @@ export default {
   import_pdf_empty: 'No text extracted from PDF',
   import_pdf_failed: 'PDF parsing failed, please retry',
   import_word_only: 'Please select a Word (.docx) file',
+  import_doc_server_parsing: 'מנתח קובץ .doc בשרת...',
   import_word_parsing: 'Parsing Word document...',
   import_word_empty: 'No text extracted from Word document',
   import_word_failed: 'Word parsing failed, please retry',

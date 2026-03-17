@@ -10,6 +10,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Camera, Document, Reading } from '@element-plus/icons-vue'
 import { recognizeText, recognizeMultiple, isSupportedImage } from '@/utils/ocrImport'
+import { parseDocFile } from '@/api/resource'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -217,12 +218,27 @@ async function handleWordSelect(e) {
   progressPercent.value = 50
 
   try {
-    const mammoth = (await import('mammoth')).default
-    const arrayBuffer = await file.arrayBuffer()
-    const result = await mammoth.extractRawText({ arrayBuffer })
-    const text = result.value
+    let text
+    const isOldDoc = name.endsWith('.doc') && !name.endsWith('.docx')
 
-    if (!text.trim()) {
+    try {
+      /* 先尝试 mammoth 解析（支持 .docx 和部分 .doc） */
+      const mammoth = (await import('mammoth')).default
+      const arrayBuffer = await file.arrayBuffer()
+      const result = await mammoth.extractRawText({ arrayBuffer })
+      text = result.value
+    } catch {
+      if (isOldDoc) {
+        /* 旧版 .doc 格式，调用后端 Apache POI 解析 */
+        progressText.value = t('import_doc_server_parsing')
+        const res = await parseDocFile(file)
+        text = res.data.text
+      } else {
+        throw new Error('docx parse failed')
+      }
+    }
+
+    if (!text || !text.trim()) {
       ElMessage.warning(t('import_word_empty'))
       status.value = 'idle'
       return
@@ -235,12 +251,7 @@ async function handleWordSelect(e) {
     status.value = 'idle'
   } catch (err) {
     console.error('Word error:', err)
-    /* .doc 旧格式解析失败时给出转换提示 */
-    if (name.endsWith('.doc') && !name.endsWith('.docx')) {
-      ElMessage.error(t('import_word_doc_hint'))
-    } else {
-      ElMessage.error(t('import_word_failed'))
-    }
+    ElMessage.error(t('import_word_failed'))
     status.value = 'idle'
   }
 }

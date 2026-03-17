@@ -11,6 +11,7 @@ import { ElMessage } from 'element-plus'
 const { t } = useI18n()
 import mammoth from 'mammoth'
 import request from '@/api/request'
+import { parseDocFile } from '@/api/resource'
 // Vite ?url 语法：只获取 worker 文件的 URL，不加载模块本身
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import {
@@ -188,11 +189,17 @@ async function parseFile(file) {
     case 'txt':
       return await readAsText(file)
     case 'doc':
-      /* 尝试用 mammoth 解析 .doc 文件，部分 .doc 实际是 docx 格式 */
+      /* 先尝试 mammoth（部分 .doc 实际是 docx 格式），失败则调用后端 Apache POI 解析 */
       try {
         return await parseDocx(file)
       } catch {
-        throw new Error(t('import_doc_not_supported'))
+        try {
+          progressText.value = t('import_doc_server_parsing')
+          const res = await parseDocFile(file)
+          return res.data.text
+        } catch (e) {
+          throw new Error(e.message || t('import_doc_not_supported'))
+        }
       }
     case 'docx':
       return await parseDocx(file)

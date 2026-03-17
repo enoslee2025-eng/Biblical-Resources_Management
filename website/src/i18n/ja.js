@@ -486,6 +486,7 @@ export default {
   import_format_only: 'txt、docx、pdf、json形式のみ対応',
   import_size_limit: 'ファイルサイズは50MBまで',
   import_json_format_error: 'JSON形式が不正です',
+  import_doc_server_parsing: 'サーバーで .doc ファイルを解析中...',
   import_unsupported_file: 'サポートされていないファイル形式',
   import_parsing_file_msg: 'ファイルを解析中...',
   import_parse_file_error: '解析失敗：{error}',

@@ -590,6 +590,7 @@ export default {
   import_size_limit: 'File size cannot exceed 50MB',
   import_json_format_error: 'Invalid JSON format',
   import_doc_not_supported: 'Old .doc format is not supported. Please open in Word and "Save As" .docx format before importing',
+  import_doc_server_parsing: 'Parsing .doc file on server...',
   import_unsupported_file: 'Unsupported file format',
   import_parsing_file_msg: 'Parsing file...',
   import_parse_file_error: 'Parse failed: {error}',
