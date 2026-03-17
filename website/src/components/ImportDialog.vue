@@ -95,11 +95,11 @@ function handleDrop(e) {
 function validateAndSet(file) {
   const ext = file.name.split('.').pop().toLowerCase()
   if (!['txt', 'doc', 'docx', 'pdf', 'json'].includes(ext)) {
-    ElMessage.warning(t('import_format_only'))
+    ElMessage({ message: t('import_format_only'), type: 'warning', duration: 1500 })
     return
   }
   if (file.size > 50 * 1024 * 1024) {
-    ElMessage.warning(t('import_size_limit'))
+    ElMessage({ message: t('import_size_limit'), type: 'warning', duration: 1500 })
     return
   }
   selectedFile.value = file
@@ -308,9 +308,9 @@ async function handleImport() {
 
     status.value = 'success'
     const bookHint = detectedBookName ? t('import_detected_hint', { name: detectedBookName }) : ''
-    ElMessage.success(t('import_success_msg') + bookHint)
+    ElMessage({ message: t('import_success_msg') + bookHint, type: 'success', duration: 1500 })
     emit('success')
-    setTimeout(() => { visible.value = false }, 1200)
+    setTimeout(() => { visible.value = false }, 600)
   } catch (e) {
     status.value = 'error'
     errorMsg.value = e.response?.data?.message || e.message || t('import_server_save_error')
