@@ -148,8 +148,8 @@ export function importResource(formData) {
 export function parseDocFile(file) {
   const formData = new FormData()
   formData.append('file', file)
+  /* 不要手动设置 Content-Type，让浏览器自动生成含 boundary 的 multipart 头 */
   return request.post('/private/api/resource/parse-doc', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 60000
   })
 }
