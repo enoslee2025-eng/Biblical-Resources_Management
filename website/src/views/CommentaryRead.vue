@@ -55,6 +55,82 @@ const docAuthor = computed(() => {
 })
 
 /**
+ * 智能目录导航项
+ * 根据块类型和内容智能生成有意义的导航标签
+ * - 非 body 类型的块直接显示（有明确语义标题）
+ * - body 块尝试从内容中提取经文引用作为标签
+ * - 连续无标题 body 块合并到上一个导航项下
+ */
+const navItems = computed(() => {
+  const items = []
+  /** 导航有意义的块类型 */
+  const navTypes = ['document_title', 'author', 'preface', 'chapter_title', 'section_title', 'verse_ref']
+
+  for (let i = 0; i < sections.value.length; i++) {
+    const sec = sections.value[i]
+
+    /* 非 body 类型：直接作为导航项 */
+    if (navTypes.includes(sec.type)) {
+      items.push({
+        sectionIndex: i,
+        label: sec.title || getTypeLabel(sec.type),
+        type: sec.type
+      })
+      continue
+    }
+
+    /* body 类型：尝试从内容中提取经文引用 */
+    const text = (sec.title || '') + ' ' + (sec.content || '')
+    const refs = findAllScriptureRefs(text)
+
+    if (refs.length > 0) {
+      /* 用找到的第一个经文引用作为标签 */
+      const firstRef = text.substring(refs[0].start, refs[0].end)
+      items.push({
+        sectionIndex: i,
+        label: firstRef,
+        type: 'verse_ref'
+      })
+    } else if (sec.title && sec.title.length <= 30 && sec.title !== sec.content?.slice(0, sec.title.length)) {
+      /* 有独立标题（非截取自内容开头）的 body 块也显示 */
+      items.push({
+        sectionIndex: i,
+        label: sec.title,
+        type: 'body'
+      })
+    }
+    /* 否则跳过，不在目录中显示 */
+  }
+
+  /* 如果过滤后目录为空（全是纯 body 块），按固定间隔生成导航点 */
+  if (items.length === 0 && sections.value.length > 0) {
+    const step = Math.max(1, Math.ceil(sections.value.length / 15))
+    for (let i = 0; i < sections.value.length; i += step) {
+      const sec = sections.value[i]
+      const label = sec.title || `${t('commentary_section')} ${i + 1}`
+      items.push({ sectionIndex: i, label, type: sec.type || 'body' })
+    }
+  }
+
+  return items
+})
+
+/**
+ * 当前高亮的目录项索引（根据滚动位置映射到最近的导航项）
+ */
+const activeNavIndex = computed(() => {
+  if (navItems.value.length === 0) return -1
+  /* 找到 sectionIndex <= currentIndex 的最后一个导航项 */
+  let best = 0
+  for (let i = 0; i < navItems.value.length; i++) {
+    if (navItems.value[i].sectionIndex <= currentIndex.value) {
+      best = i
+    }
+  }
+  return best
+})
+
+/**
  * 兼容旧数据格式
  */
 function normalizeEntries(data) {
@@ -281,19 +357,19 @@ onMounted(() => { loadDetail() })
           <h4 class="sidebar-title">{{ t('commentary_section_directory') }}</h4>
           <div class="sidebar-list">
             <div
-              v-for="(sec, idx) in sections"
-              :key="idx"
+              v-for="(nav, nIdx) in navItems"
+              :key="nav.sectionIndex"
               class="sidebar-item"
               :class="{
-                'sidebar-item-active': idx === currentIndex,
-                ['sidebar-type-' + (sec.type || 'body')]: true
+                'sidebar-item-active': nIdx === activeNavIndex,
+                ['sidebar-type-' + (nav.type || 'body')]: true
               }"
-              @click="scrollToSection(idx)"
+              @click="scrollToSection(nav.sectionIndex)"
             >
-              <span class="sidebar-idx">{{ idx + 1 }}</span>
+              <span class="sidebar-idx">{{ nIdx + 1 }}</span>
               <span class="sidebar-name">
-                <span v-if="sec.type && sec.type !== 'body'" class="sidebar-type-icon">{{ getTypeIcon(sec.type) }}</span>
-                {{ sec.title || t('commentary_untitled_section') }}
+                <span v-if="nav.type && nav.type !== 'body'" class="sidebar-type-icon">{{ getTypeIcon(nav.type) }}</span>
+                {{ nav.label }}
               </span>
             </div>
           </div>

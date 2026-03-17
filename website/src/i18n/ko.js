@@ -716,6 +716,7 @@ export default {
   commentary_stat_sections: 'Sections',
   commentary_stat_chars: 'Characters',
   commentary_section_directory: 'Table of Contents',
+  commentary_section: 'Section',
   commentary_section_unit: 'sections',
   commentary_untitled_section: 'Untitled Section',
   commentary_section_title: 'Section Title',

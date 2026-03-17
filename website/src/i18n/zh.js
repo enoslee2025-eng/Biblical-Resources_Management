@@ -806,6 +806,7 @@ export default {
   commentary_stat_sections: '段落数',
   commentary_stat_chars: '总字数',
   commentary_section_directory: '目录大纲',
+  commentary_section: '段落',
   commentary_section_unit: '个段落',
   commentary_untitled_section: '无标题段落',
   commentary_section_title: '段落标题',
