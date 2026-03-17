@@ -731,6 +731,7 @@ export default {
   block_type_section: 'Section',
   block_type_verse_ref: 'Verse',
   block_type_body: 'Body',
+  block_type: 'Block Type',
   commentary_stat_entries: 'รายการอรรถาธิบาย',
   commentary_stat_books: 'พระธรรมที่ครอบคลุม',
   commentary_stat_chapters: 'บทที่ครอบคลุม',

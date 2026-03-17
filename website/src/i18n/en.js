@@ -817,6 +817,7 @@ export default {
   block_type_section: 'Section',
   block_type_verse_ref: 'Verse',
   block_type_body: 'Body',
+  block_type: 'Block Type',
   // Legacy keys
   commentary_stat_entries: 'Entries',
   commentary_stat_books: 'Books Covered',

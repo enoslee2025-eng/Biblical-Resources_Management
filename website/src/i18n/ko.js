@@ -731,6 +731,7 @@ export default {
   block_type_section: 'Section',
   block_type_verse_ref: 'Verse',
   block_type_body: 'Body',
+  block_type: 'Block Type',
   commentary_stat_entries: '주석 항목',
   commentary_stat_books: '포함된 서권',
   commentary_stat_chapters: '포함된 장',

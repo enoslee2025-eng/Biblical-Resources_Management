@@ -745,6 +745,7 @@ export default {
   block_type_section: 'Section',
   block_type_verse_ref: 'Verse',
   block_type_body: 'Body',
+  block_type: 'Block Type',
   commentary_stat_entries: '注解エントリ',
   commentary_stat_books: 'カバー書巻',
   commentary_stat_chapters: 'カバー章数',

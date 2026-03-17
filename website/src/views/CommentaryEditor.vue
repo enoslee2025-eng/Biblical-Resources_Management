@@ -13,7 +13,7 @@ import { showToast, showLoadingToast, closeToast } from 'vant'
 import { ElMessageBox } from 'element-plus'
 import { createResource, getResourceDetail, updateResource } from '@/api/resource'
 import ResourceIcon from '@/components/ResourceIcon.vue'
-import { readFileContent, readMultipleFiles, mergeTexts, isSupportedFile, isCommentaryJsonFormat, parseCommentaryJson, BIBLE_BOOK_NAMES } from '@/utils/fileImport'
+import { readFileContent, readMultipleFiles, mergeTexts, isSupportedFile, isCommentaryJsonFormat, parseCommentaryJson, parseCommentaryText, BIBLE_BOOK_NAMES } from '@/utils/fileImport'
 import { useDragDrop } from '@/composables/useDragDrop'
 import VersionHistory from '@/components/VersionHistory.vue'
 
@@ -55,9 +55,54 @@ const entries = ref([])
 
 /** 新增注释表单 */
 const newEntry = reactive({
+  type: 'body',
   title: '',
   content: ''
 })
+
+/** 块类型选项列表 */
+const blockTypeOptions = [
+  { value: 'body', label: () => t('block_type_body'), color: '#6b6560' },
+  { value: 'document_title', label: () => t('block_type_doc_title'), color: '#5a8a6e' },
+  { value: 'author', label: () => t('block_type_author'), color: '#8a8178' },
+  { value: 'preface', label: () => t('block_type_preface'), color: '#6b8da6' },
+  { value: 'chapter_title', label: () => t('block_type_chapter'), color: '#7a6b8a' },
+  { value: 'section_title', label: () => t('block_type_section'), color: '#8a7b6b' },
+  { value: 'verse_ref', label: () => t('block_type_verse_ref'), color: '#8b6914' },
+]
+
+/** 获取块类型标签 */
+function getTypeLabel(type) {
+  const opt = blockTypeOptions.find(o => o.value === type)
+  return opt ? opt.label() : type || ''
+}
+
+/** 获取块类型颜色 */
+function getTypeColor(type) {
+  const opt = blockTypeOptions.find(o => o.value === type)
+  return opt ? opt.color : '#6b6560'
+}
+
+/** 是否显示类型选择弹窗 */
+const showTypePicker = ref(false)
+
+/** 正在修改类型的条目索引 */
+const typeEditIndex = ref(-1)
+
+/** 快速切换条目类型 */
+function openTypePicker(index) {
+  typeEditIndex.value = index
+  showTypePicker.value = true
+}
+
+/** 选择类型后应用 */
+function applyTypeChange(type) {
+  if (typeEditIndex.value >= 0 && typeEditIndex.value < entries.value.length) {
+    entries.value[typeEditIndex.value].type = type
+  }
+  showTypePicker.value = false
+  typeEditIndex.value = -1
+}
 
 /** 是否显示批量导入弹窗 */
 const showImportPopup = ref(false)
@@ -306,9 +351,11 @@ function addEntry() {
     return
   }
   entries.value.push({
+    type: newEntry.type,
     title: newEntry.title.trim(),
     content: newEntry.content.trim()
   })
+  newEntry.type = 'body'
   newEntry.title = ''
   newEntry.content = ''
 }
@@ -318,6 +365,7 @@ function addEntry() {
  */
 function startEdit(index) {
   const entry = entries.value[index]
+  newEntry.type = entry.type || 'body'
   newEntry.title = entry.title || entry.verse || ''
   newEntry.content = entry.content
   editingIndex.value = index
@@ -332,6 +380,7 @@ function updateEntry() {
     return
   }
   entries.value[editingIndex.value] = {
+    type: newEntry.type,
     title: newEntry.title.trim(),
     content: newEntry.content.trim()
   }
@@ -343,6 +392,7 @@ function updateEntry() {
  */
 function cancelEdit() {
   editingIndex.value = -1
+  newEntry.type = 'body'
   newEntry.title = ''
   newEntry.content = ''
 }
@@ -522,30 +572,11 @@ async function onFolderSelected(event) {
 
 /**
  * 解析导入文本为条目数组
- * 按段落分割，第一行短文本作为标题，其余为内容
+ * 使用智能排版解析，自动识别块类型
  */
 function parseImportText(text) {
-  const blocks = text.split(/\n\s*(?:---\s*\n\s*)?\n/).filter(b => b.trim())
-  const parsed = []
+  const parsed = parseCommentaryText(text)
   const skipped = []
-
-  for (const block of blocks) {
-    const lines = block.split('\n').filter(l => l.trim())
-    if (lines.length >= 2) {
-      parsed.push({
-        title: lines[0].trim(),
-        content: lines.slice(1).join('\n').trim()
-      })
-    } else if (lines.length === 1) {
-      /* 单行内容，截取前20字作为标题 */
-      const line = lines[0].trim()
-      parsed.push({
-        title: line.length > 20 ? line.slice(0, 20) + '...' : line,
-        content: line
-      })
-    }
-  }
-
   return { parsed, skipped }
 }
 
@@ -736,6 +767,23 @@ async function handleSave() {
 
           <!-- 新增/编辑表单 -->
           <van-cell-group inset>
+            <!-- 块类型选择 -->
+            <van-cell :title="t('block_type')" clickable>
+              <template #value>
+                <div class="type-selector-row">
+                  <span
+                    v-for="opt in blockTypeOptions"
+                    :key="opt.value"
+                    class="type-chip"
+                    :class="{ 'type-chip-active': newEntry.type === opt.value }"
+                    :style="newEntry.type === opt.value ? { background: opt.color, color: '#fff' } : { borderColor: opt.color, color: opt.color }"
+                    @click="newEntry.type = opt.value"
+                  >
+                    {{ opt.label() }}
+                  </span>
+                </div>
+              </template>
+            </van-cell>
             <van-field v-model="newEntry.title" :label="t('commentary_section_title')" :placeholder="t('commentary_section_title_ph')" />
             <van-field v-model="newEntry.content" :label="t('commentary_content')" :placeholder="t('commentary_content_placeholder')" type="textarea" rows="4" />
           </van-cell-group>
@@ -779,12 +827,21 @@ async function handleSave() {
           <van-cell-group inset v-else class="entries-list">
             <van-swipe-cell v-for="(entry, index) in filteredEntries" :key="(entry.title || entry.verse || '') + entry._realIndex">
               <van-cell
-                :title="entry.title || entry.verse || ''"
                 :label="entry.content"
                 :class="{ 'editing-cell': editingIndex === entry._realIndex }"
                 clickable
                 @click="startEdit(entry._realIndex)"
               >
+                <template #title>
+                  <div class="entry-title-row">
+                    <span
+                      class="entry-type-badge"
+                      :style="{ background: getTypeColor(entry.type), color: '#fff' }"
+                      @click.stop="openTypePicker(entry._realIndex)"
+                    >{{ getTypeLabel(entry.type) }}</span>
+                    <span class="entry-title-text">{{ entry.title || entry.verse || '' }}</span>
+                  </div>
+                </template>
                 <template #right-icon>
                   <div class="entry-actions">
                     <van-icon v-if="!entrySearchQuery" name="arrow-up" size="16" color="var(--app-text-tertiary)" @click.stop="moveEntryUp(entry._realIndex)" :aria-label="t('editor_move_up')" />
@@ -887,7 +944,10 @@ async function handleSave() {
             <!-- 预览内容 -->
             <div class="import-preview-content">
               <div v-for="(entry, idx) in importPreviewData.preview" :key="idx" class="preview-entry">
-                <strong class="preview-entry-verse">{{ entry.title || entry.verse }}</strong>
+                <div class="preview-entry-header">
+                  <span class="entry-type-badge" :style="{ background: getTypeColor(entry.type), color: '#fff' }">{{ getTypeLabel(entry.type) }}</span>
+                  <strong class="preview-entry-verse">{{ entry.title || entry.verse }}</strong>
+                </div>
                 <p class="preview-entry-content">{{ entry.content }}</p>
               </div>
               <p v-if="importPreviewData.hasMore" class="preview-more">...</p>
@@ -928,6 +988,25 @@ async function handleSave() {
         </van-popup>
       </van-tab>
     </van-tabs>
+
+    <!-- 快速修改类型弹窗 -->
+    <van-popup v-model:show="showTypePicker" round position="bottom" :style="{ padding: '16px' }" closeable>
+      <div class="type-picker">
+        <h3 class="type-picker-title">{{ t('block_type') }}</h3>
+        <div class="type-picker-grid">
+          <div
+            v-for="opt in blockTypeOptions"
+            :key="opt.value"
+            class="type-picker-item"
+            :style="{ borderColor: opt.color }"
+            @click="applyTypeChange(opt.value)"
+          >
+            <span class="type-picker-dot" :style="{ background: opt.color }"></span>
+            <span>{{ opt.label() }}</span>
+          </div>
+        </div>
+      </div>
+    </van-popup>
 
     <!-- 版本历史侧边面板 -->
     <VersionHistory
@@ -1197,5 +1276,99 @@ async function handleSave() {
 .undo-bar:active {
   background: var(--app-primary);
   color: #fff;
+}
+
+/* 块类型选择器 */
+.type-selector-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.type-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.type-chip-active {
+  border-color: transparent !important;
+  font-weight: 500;
+}
+
+/* 条目标题行 */
+.entry-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.entry-type-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.entry-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 预览条目标题 */
+.preview-entry-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+/* 类型选择弹窗 */
+.type-picker {
+  padding: 8px 0;
+}
+
+.type-picker-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--app-text-primary);
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.type-picker-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.type-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.type-picker-item:active {
+  background: var(--app-bg);
+}
+
+.type-picker-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 </style>

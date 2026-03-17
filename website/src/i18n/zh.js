@@ -822,6 +822,7 @@ export default {
   block_type_section: '小节',
   block_type_verse_ref: '经文',
   block_type_body: '正文',
+  block_type: '块类型',
   // 保留旧key兼容
   commentary_stat_entries: '注释条目',
   commentary_stat_books: '已覆盖书卷',
