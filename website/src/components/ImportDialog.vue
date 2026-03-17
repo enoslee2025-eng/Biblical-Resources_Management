@@ -21,6 +21,12 @@ import {
   buildBibleContentJson,
   detectAllBooks,
   parseFullBibleText,
+  parseCommentaryText,
+  isCommentaryJsonFormat,
+  parseCommentaryJson,
+  commentaryJsonToEntries,
+  isDictionaryJsonFormat,
+  parseDictionaryJson,
   BIBLE_BOOK_NAMES
 } from '@/utils/fileImport'
 
@@ -285,6 +291,50 @@ async function handleImport() {
       const chapterTexts = splitIntoChapters(content)
       const books = buildBibleContentJson(bookIdx, chapterTexts, 0)
       contentJson = JSON.stringify(books)
+    }
+  }
+
+  // 注释资源智能解析
+  if (props.resourceType === 'commentary' && !contentJson) {
+    progressText.value = t('import_detecting_structure')
+
+    if (ext === 'json') {
+      /* JSON 文件：检测是否为注释 APP 导出格式 */
+      if (isCommentaryJsonFormat(content)) {
+        const parsed = parseCommentaryJson(content)
+        if (parsed) {
+          const entries = commentaryJsonToEntries(parsed)
+          if (entries.length > 0) {
+            contentJson = JSON.stringify(entries)
+          }
+        }
+      } else {
+        /* 可能已经是扁平条目数组格式 */
+        try {
+          const arr = JSON.parse(content)
+          if (Array.isArray(arr) && arr.length > 0) {
+            contentJson = content
+          }
+        } catch { /* 忽略 */ }
+      }
+    }
+
+    if (!contentJson) {
+      /* 纯文本：按经文引用切分为条目 */
+      const entries = parseCommentaryText(content)
+      if (entries.length > 0) {
+        contentJson = JSON.stringify(entries)
+      }
+    }
+  }
+
+  // 词典资源智能解析
+  if (props.resourceType === 'dictionary' && !contentJson) {
+    if (ext === 'json' && isDictionaryJsonFormat(content)) {
+      const parsed = parseDictionaryJson(content)
+      if (parsed && parsed.entries.length > 0) {
+        contentJson = JSON.stringify(parsed.entries)
+      }
     }
   }
 

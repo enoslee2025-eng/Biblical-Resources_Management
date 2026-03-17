@@ -1458,3 +1458,98 @@ export function parseCommentaryJson(jsonText) {
     script: data.script || ''
   }
 }
+
+/**
+ * 将注释 APP JSON 格式转换为扁平条目数组
+ * b1c1 → 创世记1章，b39c1 → 马太福音1章
+ * @param {Object} parsed parseCommentaryJson 的返回值
+ * @returns {Array<{verse: string, content: string}>}
+ */
+export function commentaryJsonToEntries(parsed) {
+  if (!parsed || !parsed.chapters) return []
+  const entries = []
+  for (const [key, items] of Object.entries(parsed.chapters)) {
+    const m = key.match(/^b(\d+)c(\d+)$/)
+    if (!m) continue
+    const bookIdx = parseInt(m[1]) - 1
+    const chapter = parseInt(m[2])
+    if (bookIdx < 0 || bookIdx >= 66) continue
+    const bookName = BIBLE_BOOK_NAMES_INTERNAL[bookIdx]
+    if (Array.isArray(items)) {
+      items.forEach((item, idx) => {
+        const verse = item.v ? `${bookName}${chapter}:${item.v}` : `${bookName}${chapter}:${idx + 1}`
+        const content = typeof item === 'string' ? item : (item.t || item.text || item.content || JSON.stringify(item))
+        entries.push({ verse, content })
+      })
+    }
+  }
+  return entries
+}
+
+/**
+ * 解析纯文本为注释条目数组
+ * 扫描文本中的经文引用（如 创1:1、创世记 1:1），按引用位置切分
+ * @param {string} text 原始文本
+ * @returns {Array<{verse: string, content: string}>}
+ */
+export function parseCommentaryText(text) {
+  if (!text || !text.trim()) return []
+
+  /* 构建经文引用正则：书名 + 章:节 */
+  const bookNames = Object.entries(BOOK_NAME_MAP)
+    .filter(([name]) => name.length >= 2 && /^[\u4e00-\u9fff]+$/.test(name))
+    .sort((a, b) => b[0].length - a[0].length)
+    .map(([name]) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+
+  /* 也包含单字缩写 */
+  const shortNames = Object.entries(BOOK_NAME_MAP)
+    .filter(([name]) => name.length === 1 && /^[\u4e00-\u9fff]$/.test(name))
+    .map(([name]) => name)
+
+  /* 匹配模式：书名 + 可选空格 + 章号 + :或： + 节号 */
+  const allNames = [...bookNames, ...shortNames.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))]
+  const verseRefPattern = new RegExp(
+    `(${allNames.join('|')})\\s*(?:第)?(\\d{1,3})\\s*[章:：]\\s*(\\d{1,3})`,
+    'g'
+  )
+
+  /* 找到所有经文引用及其位置 */
+  const matches = []
+  let match
+  while ((match = verseRefPattern.exec(text)) !== null) {
+    const bookName = match[1]
+    const chapter = match[2]
+    const verse = match[3]
+    const bookIdx = BOOK_NAME_MAP[bookName]
+    if (bookIdx !== undefined) {
+      const fullBookName = BIBLE_BOOK_NAMES_INTERNAL[bookIdx]
+      matches.push({
+        verse: `${fullBookName}${chapter}:${verse}`,
+        position: match.index,
+        endPosition: match.index + match[0].length
+      })
+    }
+  }
+
+  if (matches.length === 0) {
+    /* 无法识别经文引用，按段落分割，每段作为一个条目 */
+    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim())
+    return paragraphs.map((p, idx) => ({
+      verse: `${BIBLE_BOOK_NAMES_INTERNAL[0]}1:${idx + 1}`,
+      content: p.trim()
+    }))
+  }
+
+  /* 按经文引用位置切分文本 */
+  const entries = []
+  for (let i = 0; i < matches.length; i++) {
+    const current = matches[i]
+    const nextPos = i + 1 < matches.length ? matches[i + 1].position : text.length
+    const content = text.slice(current.endPosition, nextPos).trim()
+    if (content) {
+      entries.push({ verse: current.verse, content })
+    }
+  }
+
+  return entries
+}

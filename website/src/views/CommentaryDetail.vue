@@ -10,7 +10,7 @@ import { useI18n } from 'vue-i18n'
 import { getResourceDetail, deleteResource } from '@/api/resource'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, ArrowRight, ArrowDown, Plus, Edit, Upload } from '@element-plus/icons-vue'
-import { BIBLE_BOOK_NAMES, BOOK_CHAPTER_COUNTS, BIBLE_VERSE_COUNTS } from '@/utils/fileImport'
+import { BIBLE_BOOK_NAMES, BOOK_CHAPTER_COUNTS, BIBLE_VERSE_COUNTS, parseCommentaryText } from '@/utils/fileImport'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -137,7 +137,15 @@ async function loadDetail() {
     meta.value = tryParseJson(detail.metaJson) || {}
 
     if (detail.contentJson) {
-      entries.value = JSON.parse(detail.contentJson) || []
+      let parsed = JSON.parse(detail.contentJson)
+      if (Array.isArray(parsed)) {
+        entries.value = parsed
+      } else if (parsed && typeof parsed === 'object' && parsed.text) {
+        /* 兼容旧格式 {"text":"...","format":"txt"}，尝试解析为条目 */
+        entries.value = parseCommentaryText(parsed.text)
+      } else {
+        entries.value = []
+      }
     }
   } catch (e) {
     console.error('加载详情失败:', e)
