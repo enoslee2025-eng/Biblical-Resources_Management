@@ -320,7 +320,7 @@ async function handleImport() {
     }
 
     if (!contentJson) {
-      /* 纯文本：按经文引用切分为条目 */
+      /* 纯文本：按段落智能分割为条目 */
       const entries = parseCommentaryText(content)
       if (entries.length > 0) {
         contentJson = JSON.stringify(entries)

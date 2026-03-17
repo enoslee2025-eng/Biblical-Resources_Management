@@ -798,7 +798,18 @@ export default {
   be_write_to_chapter: 'Write to chapter {n}',
   be_chapter_nav_label: '{book} Chapter {chapter}',
 
-  // Commentary detail & verse-by-verse editing
+  // Commentary detail (section/topic mode)
+  commentary_stat_sections: 'Sections',
+  commentary_stat_chars: 'Characters',
+  commentary_section_directory: 'Table of Contents',
+  commentary_section_unit: 'sections',
+  commentary_untitled_section: 'Untitled Section',
+  commentary_section_title: 'Section Title',
+  commentary_section_title_ph: 'e.g., Preface, Chapter 1 Overview...',
+  commentary_section_title_required: 'Please enter a section title',
+  commentary_prev_section: 'Previous',
+  commentary_next_section: 'Next',
+  // Legacy keys
   commentary_stat_entries: 'Entries',
   commentary_stat_books: 'Books Covered',
   commentary_stat_chapters: 'Chapters Covered',

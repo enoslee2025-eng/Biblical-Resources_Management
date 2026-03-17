@@ -55,7 +55,7 @@ const entries = ref([])
 
 /** 新增注释表单 */
 const newEntry = reactive({
-  verse: '',
+  title: '',
   content: ''
 })
 
@@ -132,7 +132,7 @@ const filteredEntries = computed(() => {
   if (!entrySearchQuery.value.trim()) return items
   const q = entrySearchQuery.value.trim().toLowerCase()
   return items.filter(e =>
-    e.verse.toLowerCase().includes(q) || e.content.toLowerCase().includes(q)
+    (e.title || e.verse || '').toLowerCase().includes(q) || (e.content || '').toLowerCase().includes(q)
   )
 })
 
@@ -301,15 +301,15 @@ async function loadResource() {
  * 添加注释条目（新增模式）
  */
 function addEntry() {
-  if (!newEntry.verse.trim() || !newEntry.content.trim()) {
-    showToast(t('commentary_verse_placeholder'))
+  if (!newEntry.title.trim()) {
+    showToast(t('commentary_section_title_required'))
     return
   }
   entries.value.push({
-    verse: newEntry.verse.trim(),
+    title: newEntry.title.trim(),
     content: newEntry.content.trim()
   })
-  newEntry.verse = ''
+  newEntry.title = ''
   newEntry.content = ''
 }
 
@@ -318,7 +318,7 @@ function addEntry() {
  */
 function startEdit(index) {
   const entry = entries.value[index]
-  newEntry.verse = entry.verse
+  newEntry.title = entry.title || entry.verse || ''
   newEntry.content = entry.content
   editingIndex.value = index
 }
@@ -327,12 +327,12 @@ function startEdit(index) {
  * 确认更新条目
  */
 function updateEntry() {
-  if (!newEntry.verse.trim() || !newEntry.content.trim()) {
-    showToast(t('commentary_verse_placeholder'))
+  if (!newEntry.title.trim()) {
+    showToast(t('commentary_section_title_required'))
     return
   }
   entries.value[editingIndex.value] = {
-    verse: newEntry.verse.trim(),
+    title: newEntry.title.trim(),
     content: newEntry.content.trim()
   }
   cancelEdit()
@@ -343,7 +343,7 @@ function updateEntry() {
  */
 function cancelEdit() {
   editingIndex.value = -1
-  newEntry.verse = ''
+  newEntry.title = ''
   newEntry.content = ''
 }
 
@@ -438,7 +438,7 @@ async function onFileSelected(event) {
 
           for (const item of items) {
             if (item.r === 1) continue /* 跳过引用类型，取直接内容 */
-            const verseRef = item.v
+            const sectionTitle = item.v
               ? `${bookName} ${chLabel}:${item.v.replace(/#/g, '').replace(/;/g, ',').replace(/,$/, '')}`
               : `${bookName} ${chLabel}`
             let content = item.c || ''
@@ -448,7 +448,7 @@ async function onFileSelected(event) {
             }
             if (!content) continue
             newEntries.push({
-              verse: verseRef,
+              title: sectionTitle,
               content: content
             })
           }
@@ -522,7 +522,7 @@ async function onFolderSelected(event) {
 
 /**
  * 解析导入文本为条目数组
- * 格式：每条注释占两行（第一行经文引用，第二行注释内容），用空行或 --- 分隔
+ * 按段落分割，第一行短文本作为标题，其余为内容
  */
 function parseImportText(text) {
   const blocks = text.split(/\n\s*(?:---\s*\n\s*)?\n/).filter(b => b.trim())
@@ -533,11 +533,16 @@ function parseImportText(text) {
     const lines = block.split('\n').filter(l => l.trim())
     if (lines.length >= 2) {
       parsed.push({
-        verse: lines[0].trim(),
+        title: lines[0].trim(),
         content: lines.slice(1).join('\n').trim()
       })
     } else if (lines.length === 1) {
-      skipped.push(lines[0].trim())
+      /* 单行内容，截取前20字作为标题 */
+      const line = lines[0].trim()
+      parsed.push({
+        title: line.length > 20 ? line.slice(0, 20) + '...' : line,
+        content: line
+      })
     }
   }
 
@@ -561,8 +566,8 @@ function generateImportPreview() {
   }
 
   /* 检测重复条目 */
-  const existingVerses = new Set(entries.value.map(e => e.verse.trim().toLowerCase()))
-  const duplicates = parsed.filter(p => existingVerses.has(p.verse.toLowerCase()))
+  const existingTitles = new Set(entries.value.map(e => (e.title || e.verse || '').trim().toLowerCase()))
+  const duplicates = parsed.filter(p => existingTitles.has((p.title || '').toLowerCase()))
 
   importPreviewData.value = {
     entries: parsed,
@@ -571,7 +576,7 @@ function generateImportPreview() {
     totalCount: parsed.length,
     skippedCount: skipped.length,
     duplicateCount: duplicates.length,
-    duplicateVerses: duplicates.slice(0, 3).map(d => d.verse)
+    duplicateVerses: duplicates.slice(0, 3).map(d => d.title)
   }
 
   showImportPreview.value = true
@@ -726,12 +731,12 @@ async function handleSave() {
           </div>
           <!-- 编辑提示条 -->
           <div v-if="editingIndex >= 0" class="editing-bar" role="status">
-            {{ t('editing_entry') }}: {{ entries[editingIndex]?.verse }}
+            {{ t('editing_entry') }}: {{ entries[editingIndex]?.title || entries[editingIndex]?.verse }}
           </div>
 
           <!-- 新增/编辑表单 -->
           <van-cell-group inset>
-            <van-field v-model="newEntry.verse" :label="t('commentary_verse')" :placeholder="t('commentary_verse_placeholder')" />
+            <van-field v-model="newEntry.title" :label="t('commentary_section_title')" :placeholder="t('commentary_section_title_ph')" />
             <van-field v-model="newEntry.content" :label="t('commentary_content')" :placeholder="t('commentary_content_placeholder')" type="textarea" rows="4" />
           </van-cell-group>
           <div class="action-btn-row">
@@ -756,7 +761,7 @@ async function handleSave() {
           <!-- 撤销删除按钮 -->
           <div v-if="lastDeleted" class="undo-bar" @click="undoDelete">
             <van-icon name="replay" size="16" />
-            <span>{{ t('undo') }}: {{ lastDeleted.entry.verse }}</span>
+            <span>{{ t('undo') }}: {{ lastDeleted.entry.title || lastDeleted.entry.verse }}</span>
           </div>
 
           <!-- 条目搜索（有条目时显示） -->
@@ -772,9 +777,9 @@ async function handleSave() {
           <!-- 条目列表 -->
           <van-empty v-if="entries.length === 0" :description="t('commentary_empty')" />
           <van-cell-group inset v-else class="entries-list">
-            <van-swipe-cell v-for="(entry, index) in filteredEntries" :key="entry.verse + entry._realIndex">
+            <van-swipe-cell v-for="(entry, index) in filteredEntries" :key="(entry.title || entry.verse || '') + entry._realIndex">
               <van-cell
-                :title="entry.verse"
+                :title="entry.title || entry.verse || ''"
                 :label="entry.content"
                 :class="{ 'editing-cell': editingIndex === entry._realIndex }"
                 clickable
@@ -882,7 +887,7 @@ async function handleSave() {
             <!-- 预览内容 -->
             <div class="import-preview-content">
               <div v-for="(entry, idx) in importPreviewData.preview" :key="idx" class="preview-entry">
-                <strong class="preview-entry-verse">{{ entry.verse }}</strong>
+                <strong class="preview-entry-verse">{{ entry.title || entry.verse }}</strong>
                 <p class="preview-entry-content">{{ entry.content }}</p>
               </div>
               <p v-if="importPreviewData.hasMore" class="preview-more">...</p>

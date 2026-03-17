@@ -62,7 +62,7 @@ export default {
   type_material: '素材库',
   type_bible_desc: '管理多语言圣经译本，支持经文导入、章节编辑和多版本对照阅读',
   type_dictionary_desc: '圣经词典与词汇释义，支持词条批量导入和智能检索',
-  type_commentary_desc: '经文注释与解经资料，支持逐节注释和主题分类管理',
+  type_commentary_desc: '经文注释与解经资料，支持按段落/主题智能整理和分类管理',
   type_material_desc: '图片、音频、视频等多媒体素材的统一管理与分发',
   read_more: '查看详情',
 
@@ -802,7 +802,18 @@ export default {
   be_write_to_chapter: '写入第 {n} 章',
   be_chapter_nav_label: '{book} 第 {chapter} 章',
 
-  // 注释详情页与逐节编辑
+  // 注释详情页（段落/主题模式）
+  commentary_stat_sections: '段落数',
+  commentary_stat_chars: '总字数',
+  commentary_section_directory: '目录大纲',
+  commentary_section_unit: '个段落',
+  commentary_untitled_section: '无标题段落',
+  commentary_section_title: '段落标题',
+  commentary_section_title_ph: '如：序言、第一章概论...',
+  commentary_section_title_required: '请输入段落标题',
+  commentary_prev_section: '上一段',
+  commentary_next_section: '下一段',
+  // 保留旧key兼容
   commentary_stat_entries: '注释条目',
   commentary_stat_books: '已覆盖书卷',
   commentary_stat_chapters: '已覆盖章数',

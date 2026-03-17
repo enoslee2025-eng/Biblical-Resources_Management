@@ -1463,7 +1463,7 @@ export function parseCommentaryJson(jsonText) {
  * 将注释 APP JSON 格式转换为扁平条目数组
  * b1c1 → 创世记1章，b39c1 → 马太福音1章
  * @param {Object} parsed parseCommentaryJson 的返回值
- * @returns {Array<{verse: string, content: string}>}
+ * @returns {Array<{title: string, content: string}>}
  */
 export function commentaryJsonToEntries(parsed) {
   if (!parsed || !parsed.chapters) return []
@@ -1477,9 +1477,9 @@ export function commentaryJsonToEntries(parsed) {
     const bookName = BIBLE_BOOK_NAMES_INTERNAL[bookIdx]
     if (Array.isArray(items)) {
       items.forEach((item, idx) => {
-        const verse = item.v ? `${bookName}${chapter}:${item.v}` : `${bookName}${chapter}:${idx + 1}`
+        const title = item.v ? `${bookName} ${chapter}:${item.v}` : `${bookName} ${chapter}章 段落${idx + 1}`
         const content = typeof item === 'string' ? item : (item.t || item.text || item.content || JSON.stringify(item))
-        entries.push({ verse, content })
+        entries.push({ title, content })
       })
     }
   }
@@ -1487,69 +1487,87 @@ export function commentaryJsonToEntries(parsed) {
 }
 
 /**
- * 解析纯文本为注释条目数组
- * 扫描文本中的经文引用（如 创1:1、创世记 1:1），按引用位置切分
+ * 解析纯文本为注释段落数组（按段落/主题智能分割）
+ * 智能识别标题行和段落，形成结构化章节列表
  * @param {string} text 原始文本
- * @returns {Array<{verse: string, content: string}>}
+ * @returns {Array<{title: string, content: string}>}
  */
 export function parseCommentaryText(text) {
   if (!text || !text.trim()) return []
 
-  /* 构建经文引用正则：书名 + 章:节 */
-  const bookNames = Object.entries(BOOK_NAME_MAP)
-    .filter(([name]) => name.length >= 2 && /^[\u4e00-\u9fff]+$/.test(name))
-    .sort((a, b) => b[0].length - a[0].length)
-    .map(([name]) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  /* 按双换行分割为段落块 */
+  const blocks = text.split(/\n\s*\n/).filter(p => p.trim())
+  if (blocks.length === 0) return []
 
-  /* 也包含单字缩写 */
-  const shortNames = Object.entries(BOOK_NAME_MAP)
-    .filter(([name]) => name.length === 1 && /^[\u4e00-\u9fff]$/.test(name))
-    .map(([name]) => name)
+  const entries = []
 
-  /* 匹配模式：书名 + 可选空格 + 章号 + :或： + 节号 */
-  const allNames = [...bookNames, ...shortNames.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))]
-  const verseRefPattern = new RegExp(
-    `(${allNames.join('|')})\\s*(?:第)?(\\d{1,3})\\s*[章:：]\\s*(\\d{1,3})`,
-    'g'
-  )
+  for (const block of blocks) {
+    const lines = block.split('\n').map(l => l.trim()).filter(l => l)
+    if (lines.length === 0) continue
 
-  /* 找到所有经文引用及其位置 */
-  const matches = []
-  let match
-  while ((match = verseRefPattern.exec(text)) !== null) {
-    const bookName = match[1]
-    const chapter = match[2]
-    const verse = match[3]
-    const bookIdx = BOOK_NAME_MAP[bookName]
-    if (bookIdx !== undefined) {
-      const fullBookName = BIBLE_BOOK_NAMES_INTERNAL[bookIdx]
-      matches.push({
-        verse: `${fullBookName}${chapter}:${verse}`,
-        position: match.index,
-        endPosition: match.index + match[0].length
+    /* 判断第一行是否为标题行：
+     * - 长度较短（<=40字符）
+     * - 或以特定格式开头（第X章、序言、简介等）
+     * - 或全是大写/加粗标记
+     */
+    const firstLine = lines[0]
+    const isTitle = _isLikelyTitle(firstLine)
+
+    if (isTitle && lines.length > 1) {
+      /* 第一行作为标题，其余作为内容 */
+      entries.push({
+        title: firstLine,
+        content: lines.slice(1).join('\n')
+      })
+    } else if (isTitle && lines.length === 1) {
+      /* 只有标题行，内容为空（可能是分隔标记） */
+      entries.push({
+        title: firstLine,
+        content: ''
+      })
+    } else {
+      /* 无明显标题，用前20字符作为标题摘要 */
+      const autoTitle = firstLine.length > 20 ? firstLine.slice(0, 20) + '...' : firstLine
+      entries.push({
+        title: autoTitle,
+        content: lines.join('\n')
       })
     }
   }
 
-  if (matches.length === 0) {
-    /* 无法识别经文引用，按段落分割，每段作为一个条目 */
-    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim())
-    return paragraphs.map((p, idx) => ({
-      verse: `${BIBLE_BOOK_NAMES_INTERNAL[0]}1:${idx + 1}`,
-      content: p.trim()
-    }))
-  }
-
-  /* 按经文引用位置切分文本 */
-  const entries = []
-  for (let i = 0; i < matches.length; i++) {
-    const current = matches[i]
-    const nextPos = i + 1 < matches.length ? matches[i + 1].position : text.length
-    const content = text.slice(current.endPosition, nextPos).trim()
-    if (content) {
-      entries.push({ verse: current.verse, content })
+  /* 合并连续的空内容标题到下一个段落 */
+  const merged = []
+  for (let i = 0; i < entries.length; i++) {
+    if (!entries[i].content && i + 1 < entries.length) {
+      /* 空内容标题 + 下一段 → 合并 */
+      merged.push({
+        title: entries[i].title,
+        content: entries[i + 1].content || entries[i + 1].title
+      })
+      i++ /* 跳过下一个 */
+    } else {
+      merged.push(entries[i])
     }
   }
 
-  return entries
+  return merged.length > 0 ? merged : entries
+}
+
+/**
+ * 判断一行文本是否像标题
+ * @param {string} line
+ * @returns {boolean}
+ */
+function _isLikelyTitle(line) {
+  if (!line) return false
+  /* 短行更可能是标题 */
+  if (line.length <= 30) return true
+  /* 常见标题模式 */
+  if (/^第[\s\d一二三四五六七八九十百零〇]+[章节篇部]/.test(line)) return true
+  if (/^[一二三四五六七八九十]+[、.]/.test(line)) return true
+  if (/^\d+[、.\s]/.test(line)) return true
+  if (/^(序言|前言|引言|简介|概论|总论|结语|附录|导论|绪论|全景|概述)/.test(line)) return true
+  if (/^(chapter|part|section|introduction|conclusion|preface)\s/i.test(line)) return true
+  if (/^[A-Z\s]{5,}$/.test(line)) return true /* 全大写短句 */
+  return false
 }

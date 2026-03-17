@@ -1,16 +1,16 @@
 <script setup>
 /**
  * 注释详情页
- * 显示注释资源的概览信息 + 按书卷浏览注释覆盖情况
- * 支持逐节查看和编辑注释
+ * 显示注释资源的概览信息 + 段落/主题目录大纲
+ * 注释模块采用段落/主题组织方式，非逐节模式
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getResourceDetail, deleteResource } from '@/api/resource'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, ArrowRight, ArrowDown, Plus, Edit, Upload } from '@element-plus/icons-vue'
-import { BIBLE_BOOK_NAMES, BOOK_CHAPTER_COUNTS, BIBLE_VERSE_COUNTS, parseCommentaryText } from '@/utils/fileImport'
+import { Document, ArrowRight, Plus, Edit, Upload } from '@element-plus/icons-vue'
+import { parseCommentaryText } from '@/utils/fileImport'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -25,184 +25,32 @@ const resource = ref(null)
 /** 元数据 */
 const meta = ref({})
 
-/** 注释条目列表（原始） */
-const entries = ref([])
+/** 注释段落列表 [{title, content}] */
+const sections = ref([])
 
 /** 加载状态 */
 const loading = ref(false)
 
-/** 旧约/新约展开状态 */
-const oldTestamentOpen = ref(true)
-const newTestamentOpen = ref(false)
+/** 总段落数 */
+const totalSections = computed(() => sections.value.length)
 
-/**
- * 解析经文引用，提取书卷索引
- * 支持格式：创1:1、创世记1:1、创世记 第1章:1 等
- */
-function parseVerseRef(verseStr) {
-  if (!verseStr) return null
-  const s = verseStr.trim()
-
-  /* 尝试匹配 "书名 章:节" 格式 */
-  for (let i = 0; i < BIBLE_BOOK_NAMES.length; i++) {
-    const name = BIBLE_BOOK_NAMES[i]
-    if (s.startsWith(name)) {
-      const rest = s.slice(name.length).trim()
-      const m = rest.match(/第?(\d+)[章:]?\s*[:：]?\s*(\d+)?/)
-      if (m) {
-        return { bookIndex: i, chapter: parseInt(m[1]) - 1, verse: m[2] ? parseInt(m[2]) : null }
-      }
-      /* 如果只有书名没有章节号 */
-      return { bookIndex: i, chapter: 0, verse: null }
-    }
-  }
-
-  /* 尝试匹配缩写格式 "创1:1" */
-  const shortMap = buildShortNameMap()
-  for (const [abbr, idx] of Object.entries(shortMap)) {
-    if (s.startsWith(abbr)) {
-      const rest = s.slice(abbr.length).trim()
-      const m = rest.match(/(\d+)\s*[:：]\s*(\d+)?/)
-      if (m) {
-        return { bookIndex: idx, chapter: parseInt(m[1]) - 1, verse: m[2] ? parseInt(m[2]) : null }
-      }
-    }
-  }
-
-  return null
-}
-
-/** 构建书卷缩写映射 */
-function buildShortNameMap() {
-  const map = {}
-  BIBLE_BOOK_NAMES.forEach((name, idx) => {
-    /* 取前一个字作为缩写 */
-    if (name.length >= 1) map[name[0]] = idx
-    /* 取前两个字 */
-    if (name.length >= 2) map[name.slice(0, 2)] = idx
-  })
-  return map
-}
-
-/** 按书卷分组的注释数据 */
-const bookStats = computed(() => {
-  const stats = new Array(66).fill(null).map((_, i) => ({
-    bookIndex: i,
-    name: BIBLE_BOOK_NAMES[i],
-    totalChapters: BOOK_CHAPTER_COUNTS[i],
-    entryCount: 0,
-    chaptersWithEntries: new Set()
-  }))
-
-  entries.value.forEach(entry => {
-    const parsed = parseVerseRef(entry.verse)
-    if (parsed && parsed.bookIndex >= 0 && parsed.bookIndex < 66) {
-      stats[parsed.bookIndex].entryCount++
-      stats[parsed.bookIndex].chaptersWithEntries.add(parsed.chapter)
-    }
-  })
-
-  return stats
+/** 总字数 */
+const totalChars = computed(() => {
+  return sections.value.reduce((sum, s) => sum + (s.content || '').length, 0)
 })
 
-/** 旧约书卷统计（前39卷） */
-const oldTestamentStats = computed(() => bookStats.value.slice(0, 39))
-
-/** 新约书卷统计（第40-66卷） */
-const newTestamentStats = computed(() => bookStats.value.slice(39))
-
-/** 总注释条目数 */
-const totalEntries = computed(() => entries.value.length)
-
-/** 已覆盖书卷数 */
-const coveredBooks = computed(() => bookStats.value.filter(b => b.entryCount > 0).length)
-
-/** 已覆盖章数 */
-const coveredChapters = computed(() => {
-  let total = 0
-  bookStats.value.forEach(b => { total += b.chaptersWithEntries.size })
-  return total
-})
-
-/** 总章数 */
-const totalChapters = computed(() => BOOK_CHAPTER_COUNTS.reduce((a, b) => a + b, 0))
-
 /**
- * 自动从条目内容中检测书卷引用
- * 当大部分条目 verse 为空时，扫描内容寻找经文引用并分配
+ * 兼容旧数据格式
+ * 旧格式 [{verse, content}] → 新格式 [{title, content}]
  */
-function autoDetectBookFromContent() {
-  if (entries.value.length === 0) return
-
-  /* 统计空 verse 条目数 */
-  const emptyCount = entries.value.filter(e => !e.verse || !e.verse.trim()).length
-  if (emptyCount < entries.value.length * 0.5) return /* 大部分有引用则不处理 */
-
-  /* 合并所有内容，统计各书卷出现次数 */
-  const allText = entries.value.map(e => e.content || '').join(' ')
-  const bookCounts = new Array(66).fill(0)
-
-  /* 书卷缩写映射 */
-  const shortNames = {
-    '创': 0, '出': 1, '利': 2, '民': 3, '申': 4, '书': 5, '士': 6, '得': 7,
-    '撒上': 8, '撒下': 9, '王上': 10, '王下': 11, '代上': 12, '代下': 13,
-    '拉': 14, '尼': 15, '斯': 16, '伯': 17, '诗': 18, '箴': 19, '传': 20,
-    '歌': 21, '赛': 22, '耶': 23, '哀': 24, '结': 25, '但': 26, '何': 27,
-    '珥': 28, '摩': 29, '俄': 30, '拿': 31, '弥': 32, '鸿': 33, '哈': 34,
-    '番': 35, '该': 36, '亚': 37, '玛': 38, '太': 39, '可': 40, '路': 41,
-    '约': 42, '徒': 43, '罗': 44, '林前': 45, '林后': 46, '加': 47, '弗': 48,
-    '腓': 49, '西': 50, '帖前': 51, '帖后': 52, '提前': 53, '提后': 54,
-    '多': 55, '门': 56, '来': 57, '雅': 58, '彼前': 59, '彼后': 60,
-    '约壹': 61, '约贰': 62, '约叁': 63, '犹': 64, '启': 65
-  }
-
-  BIBLE_BOOK_NAMES.forEach((name, idx) => {
-    /* 统计全称出现次数 */
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const matches = allText.match(new RegExp(escaped, 'g'))
-    if (matches) bookCounts[idx] += matches.length * 3 /* 全称权重最高 */
-  })
-
-  /* 统计缩写+章:节出现次数（如 太28：20） */
-  for (const [abbr, idx] of Object.entries(shortNames)) {
-    const escaped = abbr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const refPattern = new RegExp(`${escaped}\\d+\\s*[：:]\\s*\\d+`, 'g')
-    const matches = allText.match(refPattern)
-    if (matches) bookCounts[idx] += matches.length
-  }
-
-  /* 找到出现最多的书卷 */
-  let maxIdx = -1
-  let maxCount = 0
-  bookCounts.forEach((count, idx) => {
-    if (count > maxCount) { maxCount = count; maxIdx = idx }
-  })
-
-  if (maxIdx < 0 || maxCount < 2) {
-    /* 无法检测到书卷，将所有条目分配到创世记第1章 */
-    entries.value.forEach((entry, idx) => {
-      if (!entry.verse || !entry.verse.trim()) {
-        entry.verse = `${BIBLE_BOOK_NAMES[0]}1:${idx + 1}`
-      }
-    })
-    return
-  }
-
-  /* 检测到主要书卷，将条目按章分配 */
-  const bookName = BIBLE_BOOK_NAMES[maxIdx]
-  const totalChapters = BOOK_CHAPTER_COUNTS[maxIdx]
-  const entriesPerChapter = Math.max(1, Math.ceil(entries.value.length / totalChapters))
-
-  let chapterNum = 1
-  let verseNum = 1
-  entries.value.forEach(entry => {
-    if (!entry.verse || !entry.verse.trim()) {
-      entry.verse = `${bookName}${chapterNum}:${verseNum}`
-      verseNum++
-      if (verseNum > entriesPerChapter && chapterNum < totalChapters) {
-        chapterNum++
-        verseNum = 1
-      }
+function normalizeEntries(data) {
+  if (!Array.isArray(data)) return []
+  return data.map(item => {
+    if (item.title !== undefined) return item
+    /* 兼容旧 verse+content 格式 */
+    return {
+      title: item.verse || item.title || '',
+      content: item.content || ''
     }
   })
 }
@@ -219,16 +67,13 @@ async function loadDetail() {
     if (detail.contentJson) {
       let parsed = JSON.parse(detail.contentJson)
       if (Array.isArray(parsed)) {
-        entries.value = parsed
+        sections.value = normalizeEntries(parsed)
       } else if (parsed && typeof parsed === 'object' && parsed.text) {
-        /* 兼容旧格式 {"text":"...","format":"txt"}，尝试解析为条目 */
-        entries.value = parseCommentaryText(parsed.text)
+        /* 兼容旧格式 {"text":"...","format":"txt"} */
+        sections.value = parseCommentaryText(parsed.text)
       } else {
-        entries.value = []
+        sections.value = []
       }
-
-      /* 如果大部分条目没有经文引用，尝试从内容中自动检测书卷 */
-      autoDetectBookFromContent()
     }
   } catch (e) {
     console.error('加载详情失败:', e)
@@ -260,9 +105,9 @@ async function handleDelete() {
   }
 }
 
-/** 查看/编辑书卷注释 */
-function handleReadBook(bookIndex) {
-  router.push(`/commentary/read/${resourceId}?book=${bookIndex}`)
+/** 点击段落跳转到阅读页 */
+function handleReadSection(index) {
+  router.push(`/commentary/read/${resourceId}?section=${index}`)
 }
 
 /** 备注列表 */
@@ -340,85 +185,41 @@ onMounted(() => { loadDetail() })
         <!-- 统计数据网格 -->
         <div class="stats-grid">
           <div class="stats-item">
-            <span class="stats-value">{{ totalEntries }}</span>
-            <span class="stats-label">{{ t('commentary_stat_entries') }}</span>
+            <span class="stats-value">{{ totalSections }}</span>
+            <span class="stats-label">{{ t('commentary_stat_sections') }}</span>
           </div>
           <div class="stats-item">
-            <span class="stats-value">{{ coveredBooks }} / 66</span>
-            <span class="stats-label">{{ t('commentary_stat_books') }}</span>
-          </div>
-          <div class="stats-item">
-            <span class="stats-value">{{ coveredChapters }}</span>
-            <span class="stats-label">{{ t('commentary_stat_chapters') }}</span>
-          </div>
-          <div class="stats-item">
-            <div class="stats-progress">
-              <el-progress :percentage="Math.round(coveredBooks / 66 * 100)" :stroke-width="6" :show-text="false" color="#5a8a6e" />
-              <span class="stats-progress-text">{{ Math.round(coveredBooks / 66 * 100) }}%</span>
-            </div>
-            <span class="stats-label">{{ t('commentary_stat_coverage') }}</span>
+            <span class="stats-value">{{ totalChars.toLocaleString() }}</span>
+            <span class="stats-label">{{ t('commentary_stat_chars') }}</span>
           </div>
         </div>
 
         <div v-if="meta.summary" class="info-desc">{{ meta.summary }}</div>
       </div>
 
-      <!-- 书卷目录 -->
+      <!-- 段落目录 -->
       <div class="section-card">
         <div class="section-header">
-          <h3 class="section-title">{{ t('commentary_book_directory') }}</h3>
-          <span class="section-count">{{ coveredBooks }} / 66 {{ t('resource_book_unit') }}</span>
+          <h3 class="section-title">{{ t('commentary_section_directory') }}</h3>
+          <span class="section-count">{{ totalSections }} {{ t('commentary_section_unit') }}</span>
         </div>
 
-        <!-- 旧约 -->
-        <div class="testament-group">
-          <div class="testament-header" @click="oldTestamentOpen = !oldTestamentOpen">
-            <div class="testament-header-left">
-              <el-icon class="testament-arrow" :class="{ 'is-open': oldTestamentOpen }"><ArrowDown /></el-icon>
-              <span class="testament-title">{{ t('detail_old_testament') }}</span>
+        <div v-if="sections.length > 0" class="section-list">
+          <div
+            v-for="(sec, idx) in sections"
+            :key="idx"
+            class="section-item"
+            @click="handleReadSection(idx)"
+          >
+            <span class="section-index">{{ idx + 1 }}</span>
+            <div class="section-info">
+              <span class="section-name">{{ sec.title || t('commentary_untitled_section') }}</span>
+              <span class="section-preview">{{ (sec.content || '').slice(0, 60) }}{{ (sec.content || '').length > 60 ? '...' : '' }}</span>
             </div>
-            <span class="testament-count">{{ oldTestamentStats.filter(b => b.entryCount > 0).length }} / 39 {{ t('resource_book_unit') }}</span>
-          </div>
-          <div v-show="oldTestamentOpen" class="book-list">
-            <div v-for="book in oldTestamentStats" :key="book.bookIndex" class="book-item" :class="{ 'book-item-empty': book.entryCount === 0 }" @click="handleReadBook(book.bookIndex)">
-              <span class="book-index">{{ book.bookIndex + 1 }}</span>
-              <div class="book-info">
-                <span class="book-name">{{ book.name }}</span>
-                <span class="book-meta">{{ book.chaptersWithEntries.size }}/{{ book.totalChapters }} {{ t('detail_book_chapters_short') }} · {{ book.entryCount }} {{ t('commentary_stat_notes_unit') }}</span>
-              </div>
-              <div class="book-progress" v-if="book.entryCount > 0">
-                <el-progress :percentage="Math.round(book.chaptersWithEntries.size / book.totalChapters * 100)" :stroke-width="4" :show-text="false" :color="book.chaptersWithEntries.size === book.totalChapters ? '#67c23a' : '#5a8a6e'" />
-                <span class="book-progress-text">{{ Math.round(book.chaptersWithEntries.size / book.totalChapters * 100) }}%</span>
-              </div>
-              <el-icon class="book-arrow"><ArrowRight /></el-icon>
-            </div>
+            <el-icon class="section-arrow"><ArrowRight /></el-icon>
           </div>
         </div>
-
-        <!-- 新约 -->
-        <div class="testament-group">
-          <div class="testament-header" @click="newTestamentOpen = !newTestamentOpen">
-            <div class="testament-header-left">
-              <el-icon class="testament-arrow" :class="{ 'is-open': newTestamentOpen }"><ArrowDown /></el-icon>
-              <span class="testament-title">{{ t('detail_new_testament') }}</span>
-            </div>
-            <span class="testament-count">{{ newTestamentStats.filter(b => b.entryCount > 0).length }} / 27 {{ t('resource_book_unit') }}</span>
-          </div>
-          <div v-show="newTestamentOpen" class="book-list">
-            <div v-for="book in newTestamentStats" :key="book.bookIndex" class="book-item" :class="{ 'book-item-empty': book.entryCount === 0 }" @click="handleReadBook(book.bookIndex)">
-              <span class="book-index">{{ book.bookIndex + 1 }}</span>
-              <div class="book-info">
-                <span class="book-name">{{ book.name }}</span>
-                <span class="book-meta">{{ book.chaptersWithEntries.size }}/{{ book.totalChapters }} {{ t('detail_book_chapters_short') }} · {{ book.entryCount }} {{ t('commentary_stat_notes_unit') }}</span>
-              </div>
-              <div class="book-progress" v-if="book.entryCount > 0">
-                <el-progress :percentage="Math.round(book.chaptersWithEntries.size / book.totalChapters * 100)" :stroke-width="4" :show-text="false" :color="book.chaptersWithEntries.size === book.totalChapters ? '#67c23a' : '#5a8a6e'" />
-                <span class="book-progress-text">{{ Math.round(book.chaptersWithEntries.size / book.totalChapters * 100) }}%</span>
-              </div>
-              <el-icon class="book-arrow"><ArrowRight /></el-icon>
-            </div>
-          </div>
-        </div>
+        <div v-else class="empty-hint">{{ t('commentary_empty') }}</div>
       </div>
 
       <!-- 备注 -->
@@ -477,13 +278,10 @@ onMounted(() => { loadDetail() })
 .action-pill:hover { border-color: #5a8a6e; color: #5a8a6e; }
 .action-pill-danger:hover { border-color: var(--app-danger, #c05050); color: var(--app-danger, #c05050); }
 
-.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 14px 0; border-top: 1px solid var(--church-border, #e0d8cf); border-bottom: 1px solid var(--church-border, #e0d8cf); }
+.stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 14px 0; border-top: 1px solid var(--church-border, #e0d8cf); border-bottom: 1px solid var(--church-border, #e0d8cf); }
 .stats-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .stats-value { font-size: 16px; font-weight: 600; color: var(--church-charcoal, #3a3a3a); }
 .stats-label { font-size: 10px; color: var(--church-warm-gray, #8a8178); letter-spacing: 1px; text-transform: uppercase; }
-.stats-progress { display: flex; align-items: center; gap: 6px; width: 100%; max-width: 80px; }
-.stats-progress :deep(.el-progress) { flex: 1; }
-.stats-progress-text { font-size: 13px; font-weight: 700; color: #5a8a6e; white-space: nowrap; }
 .info-desc { font-size: 13px; color: var(--app-text-secondary, #6b6560); line-height: 1.8; padding-top: 16px; }
 
 .section-card { background: #fff; border: 1px solid var(--church-border, #e0d8cf); border-radius: 4px; padding: 24px; }
@@ -491,30 +289,15 @@ onMounted(() => { loadDetail() })
 .section-title { font-family: var(--font-heading); font-size: 16px; font-weight: 600; color: var(--church-charcoal, #3a3a3a); letter-spacing: 2px; margin: 0; }
 .section-count { font-size: 12px; color: var(--church-warm-gray, #8a8178); }
 
-.testament-group { margin-top: 8px; }
-.testament-group + .testament-group { margin-top: 24px; }
-.testament-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 8px 6px; border-bottom: 2px solid #5a8a6e; margin-bottom: 4px; cursor: pointer; user-select: none; transition: background 0.2s; }
-.testament-header:hover { background: rgba(90,138,110,0.04); }
-.testament-header-left { display: flex; align-items: center; gap: 6px; }
-.testament-arrow { color: #5a8a6e; font-size: 14px; transition: transform 0.3s; transform: rotate(-90deg); }
-.testament-arrow.is-open { transform: rotate(0deg); }
-.testament-title { font-family: var(--font-heading); font-size: 14px; font-weight: 600; color: #5a8a6e; letter-spacing: 2px; }
-.testament-count { font-size: 11px; color: var(--church-warm-gray, #8a8178); }
-
-.book-list { display: flex; flex-direction: column; }
-.book-item { display: flex; align-items: center; gap: 14px; padding: 14px 8px; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
-.book-item:hover { background: var(--church-cream, #f5f0eb); }
-.book-item + .book-item { border-top: 1px solid var(--church-border, #e0d8cf); }
-.book-item-empty { opacity: 0.5; }
-.book-item-empty:hover { opacity: 0.8; }
-.book-index { width: 30px; height: 30px; border-radius: 4px; background: rgba(90,138,110,0.06); color: #5a8a6e; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.book-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.book-name { font-size: 14px; font-weight: 500; color: var(--church-charcoal, #3a3a3a); }
-.book-meta { font-size: 12px; color: var(--church-warm-gray, #8a8178); }
-.book-progress { display: flex; align-items: center; gap: 6px; width: 100px; }
-.book-progress :deep(.el-progress) { flex: 1; }
-.book-progress-text { font-size: 11px; color: var(--church-warm-gray, #8a8178); white-space: nowrap; min-width: 32px; text-align: right; }
-.book-arrow { color: var(--app-text-tertiary, #9a948e); flex-shrink: 0; }
+.section-list { display: flex; flex-direction: column; }
+.section-item { display: flex; align-items: center; gap: 14px; padding: 14px 8px; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+.section-item:hover { background: var(--church-cream, #f5f0eb); }
+.section-item + .section-item { border-top: 1px solid var(--church-border, #e0d8cf); }
+.section-index { width: 30px; height: 30px; border-radius: 4px; background: rgba(90,138,110,0.06); color: #5a8a6e; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.section-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.section-name { font-size: 14px; font-weight: 500; color: var(--church-charcoal, #3a3a3a); }
+.section-preview { font-size: 12px; color: var(--church-warm-gray, #8a8178); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.section-arrow { color: var(--app-text-tertiary, #9a948e); flex-shrink: 0; }
 
 .note-input-area { margin-bottom: 12px; }
 .note-input-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
@@ -527,6 +310,4 @@ onMounted(() => { loadDetail() })
 .note-delete { font-size: 12px; color: var(--app-text-tertiary, #9a948e); cursor: pointer; transition: color 0.2s; }
 .note-delete:hover { color: var(--app-danger, #c05050); }
 .empty-hint { text-align: center; color: var(--app-text-tertiary, #9a948e); padding: 40px 0; font-size: 14px; }
-
-@media (max-width: 680px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
 </style>
