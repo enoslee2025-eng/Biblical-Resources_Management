@@ -157,6 +157,27 @@ onMounted(() => {
       </div>
     </section>
 
+    <!-- ============ 统计数字卡片 ============ -->
+    <section class="section-stats">
+      <div class="section-inner section-inner-wide">
+        <div class="stat-cards">
+          <div
+            v-for="cat in categories"
+            :key="'stat-' + cat.type"
+            class="stat-card"
+            @click="router.push(cat.path)"
+            role="button"
+            :aria-label="t(cat.titleKey)"
+          >
+            <div class="stat-number" :style="{ color: cat.color }">
+              {{ stats.counts[cat.type] || 0 }}
+            </div>
+            <div class="stat-label">{{ t(cat.titleKey) }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ 四大板块卡片 ============ -->
     <section class="section-cream">
       <div class="section-inner section-inner-wide">
@@ -419,9 +440,54 @@ onMounted(() => {
   flex: 1;
 }
 
+/* ==================== 统计数字卡片 ==================== */
+.section-stats {
+  background: #fff;
+  padding: 40px 0;
+  border-bottom: 1px solid var(--church-border, #d5dce6);
+}
+
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+}
+
+.stat-card {
+  background: var(--church-cream, #f0f4f8);
+  border-radius: 8px;
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 1px solid transparent;
+}
+
+.stat-card:hover {
+  border-color: var(--church-border, #d5dce6);
+  box-shadow: 0 4px 16px rgba(45, 55, 72, 0.08);
+  transform: translateY(-2px);
+}
+
+.stat-number {
+  font-family: 'Georgia', 'Noto Serif SC', serif;
+  font-size: 42px;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 10px;
+  letter-spacing: -1px;
+}
+
+.stat-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--church-warm-gray, #718096);
+  letter-spacing: 2px;
+}
+
 /* ==================== 通用 Section ==================== */
 .section-cream {
-  background: var(--church-cream, #f5f0eb);
+  background: var(--church-cream, #f0f4f8);
   padding: 48px 0;
 }
 
@@ -756,6 +822,14 @@ onMounted(() => {
     letter-spacing: 4px;
   }
 
+  .stat-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .stat-number {
+    font-size: 32px;
+  }
+
   .module-cards {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -765,7 +839,8 @@ onMounted(() => {
   }
 
   .section-cream,
-  .section-white {
+  .section-white,
+  .section-stats {
     padding: 32px 0;
   }
 }

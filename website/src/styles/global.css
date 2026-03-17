@@ -8,18 +8,18 @@
 /* ===================== 品牌主题变量 ===================== */
 
 :root {
-  /* 教会风格主色调 */
+  /* 教会风格主色调 — 方案B：浅蓝灰底 */
   --church-navy: #3d5a80;
   --church-navy-light: #5a7da8;
   --church-navy-dark: #2c4260;
-  --church-cream: #f5f0eb;
-  --church-cream-dark: #ebe4dc;
-  --church-charcoal: #3a3a3a;
+  --church-cream: #f0f4f8;
+  --church-cream-dark: #e2e8f0;
+  --church-charcoal: #2d3748;
   --church-gold: #c9a96e;
   --church-gold-light: #d4bc8a;
   --church-white: #ffffff;
-  --church-warm-gray: #8a8178;
-  --church-border: #e0d8cf;
+  --church-warm-gray: #718096;
+  --church-border: #d5dce6;
 
   /* 资源类型专色 */
   --app-type-bible: #3d5a80;
@@ -39,16 +39,16 @@
   --app-danger: #c05050;
 
   /* 文字色 */
-  --app-text-primary: #2c2c2c;
-  --app-text-secondary: #6b6560;
-  --app-text-tertiary: #9a948e;
+  --app-text-primary: #2d3748;
+  --app-text-secondary: #5a6577;
+  --app-text-tertiary: #8a94a6;
 
   /* 背景与卡片 */
-  --app-bg: #f5f0eb;
+  --app-bg: #f0f4f8;
   --app-card-bg: #ffffff;
-  --app-card-shadow: 0 2px 16px rgba(58, 58, 58, 0.06);
-  --app-card-shadow-hover: 0 6px 24px rgba(58, 58, 58, 0.12);
-  --app-border: #e0d8cf;
+  --app-card-shadow: 0 2px 16px rgba(45, 55, 72, 0.06);
+  --app-card-shadow-hover: 0 6px 24px rgba(45, 55, 72, 0.12);
+  --app-border: #d5dce6;
 
   /* 字体 */
   --font-heading: 'Cormorant Garamond', 'Noto Serif SC', 'STSong', 'SimSun', Georgia, serif;
@@ -59,35 +59,35 @@
   --van-success-color: #5a8a6e;
   --van-warning-color: #d4a843;
   --van-danger-color: #c05050;
-  --van-text-color: #2c2c2c;
-  --van-text-color-2: #6b6560;
-  --van-text-color-3: #9a948e;
-  --van-background: #f5f0eb;
+  --van-text-color: #2d3748;
+  --van-text-color-2: #5a6577;
+  --van-text-color-3: #8a94a6;
+  --van-background: #f0f4f8;
   --van-background-2: #ffffff;
-  --van-border-color: #e0d8cf;
-  --van-active-color: #ebe4dc;
+  --van-border-color: #d5dce6;
+  --van-active-color: #e2e8f0;
 
   /* ActionSheet / Dialog / Popup 组件变量（浅色） */
-  --van-action-sheet-item-text-color: #2c2c2c;
-  --van-action-sheet-item-disabled-text-color: #9a948e;
-  --van-action-sheet-subname-color: #6b6560;
-  --van-action-sheet-cancel-text-color: #6b6560;
-  --van-action-sheet-description-color: #6b6560;
+  --van-action-sheet-item-text-color: #2d3748;
+  --van-action-sheet-item-disabled-text-color: #8a94a6;
+  --van-action-sheet-subname-color: #5a6577;
+  --van-action-sheet-cancel-text-color: #5a6577;
+  --van-action-sheet-description-color: #5a6577;
   --van-action-sheet-background: #ffffff;
   --van-dialog-background: #ffffff;
   --van-dialog-message-text-color: #2c2c2c;
   --van-popup-background: #ffffff;
-  --van-cell-text-color: #2c2c2c;
+  --van-cell-text-color: #2d3748;
   --van-cell-background: #ffffff;
-  --van-cell-label-color: #6b6560;
-  --van-field-label-color: #6b6560;
-  --van-field-input-text-color: #2c2c2c;
-  --van-search-background: #f5f0eb;
+  --van-cell-label-color: #5a6577;
+  --van-field-label-color: #5a6577;
+  --van-field-input-text-color: #2d3748;
+  --van-search-background: #f0f4f8;
   --van-search-content-background: #ffffff;
   --van-nav-bar-background: #ffffff;
-  --van-nav-bar-title-text-color: #2c2c2c;
-  --van-nav-bar-icon-color: #2c2c2c;
-  --van-tab-text-color: #6b6560;
+  --van-nav-bar-title-text-color: #2d3748;
+  --van-nav-bar-icon-color: #2d3748;
+  --van-tab-text-color: #5a6577;
   --van-tab-active-text-color: #3d5a80;
   --van-toast-text-color: #ffffff;
   --van-toast-background: rgba(58, 58, 58, 0.85);
