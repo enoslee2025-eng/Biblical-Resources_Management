@@ -359,20 +359,18 @@ onMounted(() => { loadDetail() })
 }
 
 .content-title {
-  font-family: var(--font-heading);
-  font-size: 22px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--church-charcoal, #3a3a3a);
-  letter-spacing: 1px;
-  margin: 0 0 24px 0;
-  padding-bottom: 16px;
-  border-bottom: 2px solid #5a8a6e;
+  margin: 0 0 20px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--church-border, #e0d8cf);
 }
 
 .content-body {
   font-size: 15px;
   color: var(--church-charcoal, #3a3a3a);
-  line-height: 2;
+  line-height: 1.8;
   word-break: break-word;
 }
 
