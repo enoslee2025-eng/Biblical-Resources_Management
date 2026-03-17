@@ -260,8 +260,8 @@ async function handleImport() {
     // 先扫描整段文本，看能识别到几卷书
     const allDetected = detectAllBooks(content)
 
-    if (allDetected.length >= 3) {
-      // 识别到 3 卷以上 → 整本圣经模式
+    if (allDetected.length >= 2) {
+      // 识别到 2 卷以上 → 整本圣经模式
       progressText.value = t('import_detected_n_books', { count: allDetected.length })
       const { books, detectedCount } = parseFullBibleText(content)
       contentJson = JSON.stringify(books)
@@ -277,9 +277,10 @@ async function handleImport() {
         if (detected) bookIdx = detected.bookIndex
       }
 
-      if (bookIdx >= 0) {
-        detectedBookName = BIBLE_BOOK_NAMES[bookIdx]
-      }
+      // 仍未识别到书卷时，默认放入创世记（索引0），确保内容不丢失
+      if (bookIdx < 0) bookIdx = 0
+
+      detectedBookName = BIBLE_BOOK_NAMES[bookIdx]
 
       const chapterTexts = splitIntoChapters(content)
       const books = buildBibleContentJson(bookIdx, chapterTexts, 0)
@@ -292,13 +293,18 @@ async function handleImport() {
   progressText.value = t('import_saving_server')
 
   try {
-    await request.post('/private/api/resource/import-content', {
+    /* 有结构化数据时不发送原始文本，减小请求体积避免 500 */
+    const payload = {
       type: props.resourceType,
       title,
-      format: ext,
-      content,
-      contentJson
-    })
+      format: ext
+    }
+    if (contentJson) {
+      payload.contentJson = contentJson
+    } else {
+      payload.content = content
+    }
+    await request.post('/private/api/resource/import-content', payload)
 
     status.value = 'success'
     const bookHint = detectedBookName ? t('import_detected_hint', { name: detectedBookName }) : ''

@@ -16,7 +16,7 @@ services:
       - mysql_data:/var/lib/mysql
       - ./mysql-init.sql:/docker-entrypoint-initdb.d/00-init-user.sql
       - ../database/init-db.sql:/docker-entrypoint-initdb.d/01-init-db.sql
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-allowed-packet=64M
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s

@@ -1110,7 +1110,7 @@ export function buildBibleContentJson(bookIndex, chapterTexts, startChapter = 0)
  * @returns {Array<{ bookIndex: number, name: string, position: number }>} 按位置排序
  */
 export function detectAllBooks(text) {
-  /* 只用中文长名（≥2字，优先3字以上），要求出现在行首或被空白包围 */
+  /* 只用中文长名（≥2字，优先3字以上），要求出现在行首 */
   const candidates = Object.entries(BOOK_NAME_MAP)
     .filter(([name]) => name.length >= 2 && /^[\u4e00-\u9fff]+$/.test(name))
     .sort((a, b) => b[0].length - a[0].length) /* 长名优先，防止"创"先匹配"创世记" */
@@ -1118,13 +1118,22 @@ export function detectAllBooks(text) {
   const found = new Map() /* bookIndex → first occurrence */
 
   for (const [name, bookIdx] of candidates) {
-    /* 要求书卷名在行首（可有前导空白），后跟换行或行尾 */
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const pattern = new RegExp(`(?:^|\\n)\\s*${escaped}\\s*(?:\\n|$)`, 'g')
+    /* 策略1：书卷名独占一行（原有逻辑） */
+    const pattern1 = new RegExp(`(?:^|\\n)\\s*${escaped}\\s*(?:\\n|$)`, 'g')
     let m
-    while ((m = pattern.exec(text)) !== null) {
+    while ((m = pattern1.exec(text)) !== null) {
       if (!found.has(bookIdx)) {
         found.set(bookIdx, { bookIndex: bookIdx, name, position: m.index })
+      }
+    }
+    /* 策略2：书卷名在行首，后跟章节号或空白（PDF 提取时书名可能与内容同行） */
+    if (!found.has(bookIdx) && name.length >= 3) {
+      const pattern2 = new RegExp(`(?:^|\\n)\\s*${escaped}\\s*(?:第|\\d|$)`, 'gm')
+      while ((m = pattern2.exec(text)) !== null) {
+        if (!found.has(bookIdx)) {
+          found.set(bookIdx, { bookIndex: bookIdx, name, position: m.index })
+        }
       }
     }
   }
@@ -1145,8 +1154,8 @@ export function parseFullBibleText(text) {
   const books = initEmptyBibleBooks()
   const detectedBooks = detectAllBooks(cleanText)
 
-  if (detectedBooks.length < 2) {
-    return { books, detectedCount: detectedBooks.length }
+  if (detectedBooks.length < 1) {
+    return { books, detectedCount: 0 }
   }
 
   for (let i = 0; i < detectedBooks.length; i++) {

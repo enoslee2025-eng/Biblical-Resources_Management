@@ -181,32 +181,41 @@ public class ResourceResource {
     @POST
     @Path("/import-content")
     public Result<ResourceDTO> importContent(ImportContentRequest request) {
-        // 1. 创建资源记录（标题 + 类型）
-        CreateResourceRequest createReq = new CreateResourceRequest();
-        createReq.type = request.type;
-        createReq.title = request.title;
-        ResourceDTO created = resourceService.create(userContext.getUserId(), createReq);
+        try {
+            // 1. 创建资源记录（标题 + 类型）
+            CreateResourceRequest createReq = new CreateResourceRequest();
+            createReq.type = request.type;
+            createReq.title = request.title;
+            ResourceDTO created = resourceService.create(userContext.getUserId(), createReq);
 
-        // 2. 将内容存入 contentJson
-        UpdateResourceRequest updateReq = new UpdateResourceRequest();
-        updateReq.title = request.title;
-        if (request.contentJson != null && !request.contentJson.isBlank()) {
-            // 前端已解析好结构化数据（如圣经译本的章节经文），直接使用
-            updateReq.contentJson = request.contentJson;
-        } else {
-            // 纯文字内容，包装为简单 JSON
-            try {
-                updateReq.contentJson = objectMapper.writeValueAsString(
-                    java.util.Map.of("text", request.content != null ? request.content : "",
-                                     "format", request.format != null ? request.format : "txt")
-                );
-            } catch (Exception e) {
-                updateReq.contentJson = "{\"text\":\"\"}";
+            // 2. 将内容存入 contentJson
+            UpdateResourceRequest updateReq = new UpdateResourceRequest();
+            updateReq.title = request.title;
+            if (request.contentJson != null && !request.contentJson.isBlank()) {
+                // 前端已解析好结构化数据（如圣经译本的章节经文），直接使用
+                updateReq.contentJson = request.contentJson;
+            } else {
+                // 纯文字内容，包装为简单 JSON
+                try {
+                    updateReq.contentJson = objectMapper.writeValueAsString(
+                        java.util.Map.of("text", request.content != null ? request.content : "",
+                                         "format", request.format != null ? request.format : "txt")
+                    );
+                } catch (Exception e) {
+                    updateReq.contentJson = "{\"text\":\"\"}";
+                }
             }
-        }
-        ResourceDTO updated = resourceService.update(userContext.getUserId(), created.id, updateReq);
+            ResourceDTO updated = resourceService.update(userContext.getUserId(), created.id, updateReq);
 
-        return Result.ok(updated);
+            return Result.ok(updated);
+        } catch (Exception e) {
+            // 捕获所有异常（包括数据过大导致的持久化错误），返回友好提示
+            String msg = e.getMessage();
+            if (msg != null && (msg.contains("max_allowed_packet") || msg.contains("Packet"))) {
+                return Result.fail(500, "导入内容过大，请尝试分卷导入或联系管理员调整数据库配置");
+            }
+            return Result.fail(500, "导入失败：" + (msg != null ? msg : "未知错误"));
+        }
     }
 
     /**
