@@ -127,6 +127,86 @@ const coveredChapters = computed(() => {
 /** 总章数 */
 const totalChapters = computed(() => BOOK_CHAPTER_COUNTS.reduce((a, b) => a + b, 0))
 
+/**
+ * 自动从条目内容中检测书卷引用
+ * 当大部分条目 verse 为空时，扫描内容寻找经文引用并分配
+ */
+function autoDetectBookFromContent() {
+  if (entries.value.length === 0) return
+
+  /* 统计空 verse 条目数 */
+  const emptyCount = entries.value.filter(e => !e.verse || !e.verse.trim()).length
+  if (emptyCount < entries.value.length * 0.5) return /* 大部分有引用则不处理 */
+
+  /* 合并所有内容，统计各书卷出现次数 */
+  const allText = entries.value.map(e => e.content || '').join(' ')
+  const bookCounts = new Array(66).fill(0)
+
+  /* 书卷缩写映射 */
+  const shortNames = {
+    '创': 0, '出': 1, '利': 2, '民': 3, '申': 4, '书': 5, '士': 6, '得': 7,
+    '撒上': 8, '撒下': 9, '王上': 10, '王下': 11, '代上': 12, '代下': 13,
+    '拉': 14, '尼': 15, '斯': 16, '伯': 17, '诗': 18, '箴': 19, '传': 20,
+    '歌': 21, '赛': 22, '耶': 23, '哀': 24, '结': 25, '但': 26, '何': 27,
+    '珥': 28, '摩': 29, '俄': 30, '拿': 31, '弥': 32, '鸿': 33, '哈': 34,
+    '番': 35, '该': 36, '亚': 37, '玛': 38, '太': 39, '可': 40, '路': 41,
+    '约': 42, '徒': 43, '罗': 44, '林前': 45, '林后': 46, '加': 47, '弗': 48,
+    '腓': 49, '西': 50, '帖前': 51, '帖后': 52, '提前': 53, '提后': 54,
+    '多': 55, '门': 56, '来': 57, '雅': 58, '彼前': 59, '彼后': 60,
+    '约壹': 61, '约贰': 62, '约叁': 63, '犹': 64, '启': 65
+  }
+
+  BIBLE_BOOK_NAMES.forEach((name, idx) => {
+    /* 统计全称出现次数 */
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const matches = allText.match(new RegExp(escaped, 'g'))
+    if (matches) bookCounts[idx] += matches.length * 3 /* 全称权重最高 */
+  })
+
+  /* 统计缩写+章:节出现次数（如 太28：20） */
+  for (const [abbr, idx] of Object.entries(shortNames)) {
+    const escaped = abbr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const refPattern = new RegExp(`${escaped}\\d+\\s*[：:]\\s*\\d+`, 'g')
+    const matches = allText.match(refPattern)
+    if (matches) bookCounts[idx] += matches.length
+  }
+
+  /* 找到出现最多的书卷 */
+  let maxIdx = -1
+  let maxCount = 0
+  bookCounts.forEach((count, idx) => {
+    if (count > maxCount) { maxCount = count; maxIdx = idx }
+  })
+
+  if (maxIdx < 0 || maxCount < 2) {
+    /* 无法检测到书卷，将所有条目分配到创世记第1章 */
+    entries.value.forEach((entry, idx) => {
+      if (!entry.verse || !entry.verse.trim()) {
+        entry.verse = `${BIBLE_BOOK_NAMES[0]}1:${idx + 1}`
+      }
+    })
+    return
+  }
+
+  /* 检测到主要书卷，将条目按章分配 */
+  const bookName = BIBLE_BOOK_NAMES[maxIdx]
+  const totalChapters = BOOK_CHAPTER_COUNTS[maxIdx]
+  const entriesPerChapter = Math.max(1, Math.ceil(entries.value.length / totalChapters))
+
+  let chapterNum = 1
+  let verseNum = 1
+  entries.value.forEach(entry => {
+    if (!entry.verse || !entry.verse.trim()) {
+      entry.verse = `${bookName}${chapterNum}:${verseNum}`
+      verseNum++
+      if (verseNum > entriesPerChapter && chapterNum < totalChapters) {
+        chapterNum++
+        verseNum = 1
+      }
+    }
+  })
+}
+
 /** 加载资源详情 */
 async function loadDetail() {
   loading.value = true
@@ -146,6 +226,9 @@ async function loadDetail() {
       } else {
         entries.value = []
       }
+
+      /* 如果大部分条目没有经文引用，尝试从内容中自动检测书卷 */
+      autoDetectBookFromContent()
     }
   } catch (e) {
     console.error('加载详情失败:', e)
