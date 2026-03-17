@@ -808,6 +808,23 @@ export default {
   create_commentary_submit: 'สร้าง',
   create_commentary_success: 'สร้างอรรถาธิบายสำเร็จ',
   create_commentary_failed: 'สร้างล้มเหลว: ',
+
+  // Commentary Import Enhancement
+  import_save_to_resource: 'Save to Commentary',
+  import_existing_entries: '{count} existing entries, new imports will be appended',
+  import_matched_verses: 'verses matched',
+  import_unmatched_entries: 'unmatched',
+  import_no_ref: 'No verse ref',
+  import_paste_text: 'Paste Text',
+  import_paste_text_desc: 'Paste commentary text, auto-detect verse references',
+  import_paste_format: 'Various formats',
+  import_paste_hint: 'Supports auto-detection of verse references:\n· Genesis 1:1 / Gen 1:1\n· Matthew 3:16 / Matt 3:16\n· 1:1 (chapter:verse format)\n\nEach entry starts with a verse reference followed by commentary.',
+  import_paste_placeholder: 'Paste commentary text here...',
+  import_parse_btn: 'Smart Parse',
+  import_empty_text: 'Please enter text content',
+  import_loaded: 'Loaded {count} imported entries',
+  commentary_read_btn: 'Read',
+
   // Dictionary Detail & Create Dialog
   dict_detail_edit_entries: 'แก้ไขรายการ',
   dict_detail_stat_entries: 'จำนวนรายการ',

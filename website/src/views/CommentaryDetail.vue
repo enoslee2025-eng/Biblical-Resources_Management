@@ -9,7 +9,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getResourceDetail, deleteResource } from '@/api/resource'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, ArrowRight, ArrowDown, Plus, Edit } from '@element-plus/icons-vue'
+import { Document, ArrowRight, ArrowDown, Plus, Edit, Upload } from '@element-plus/icons-vue'
 import { BIBLE_BOOK_NAMES, BOOK_CHAPTER_COUNTS, BIBLE_VERSE_COUNTS } from '@/utils/fileImport'
 
 const { t } = useI18n()
@@ -230,9 +230,17 @@ onMounted(() => { loadDetail() })
             </div>
           </div>
           <div class="card-header-actions">
+            <div class="action-pill" @click="router.push(`/commentary/import?id=${resourceId}`)">
+              <el-icon :size="12"><Upload /></el-icon>
+              {{ t('commentary_import_btn') }}
+            </div>
             <div class="action-pill" @click="router.push(`/commentary/edit/${resourceId}`)">
               <el-icon :size="12"><Edit /></el-icon>
               {{ t('commentary_edit_entries') }}
+            </div>
+            <div class="action-pill" @click="router.push(`/commentary/read/${resourceId}`)">
+              <el-icon :size="12"><Document /></el-icon>
+              {{ t('commentary_read_btn') }}
             </div>
             <div class="action-pill action-pill-danger" @click="handleDelete">{{ t('delete') }}</div>
           </div>

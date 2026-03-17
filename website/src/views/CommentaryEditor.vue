@@ -237,7 +237,26 @@ function onKeyDown(e) {
 onMounted(() => {
   window.addEventListener('beforeunload', onBeforeUnloadHandler)
   window.addEventListener('keydown', onKeyDown)
-  loadResource()
+
+  /* 检查是否有从导入页传入的数据 */
+  const importData = sessionStorage.getItem('commentaryImportData')
+  if (importData && !resourceId.value) {
+    try {
+      const imported = JSON.parse(importData)
+      if (Array.isArray(imported) && imported.length > 0) {
+        entries.value = imported
+        isDirty.value = true
+        showToast(t('import_loaded', { count: imported.length }))
+      }
+    } catch (e) {
+      console.error('解析导入数据失败:', e)
+    } finally {
+      sessionStorage.removeItem('commentaryImportData')
+    }
+  } else {
+    loadResource()
+  }
+
   startAutoSave()
 })
 

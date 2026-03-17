@@ -898,6 +898,23 @@ export default {
   create_commentary_success: '注释创建成功',
   create_commentary_failed: '创建失败：',
 
+  // 注释导入增强
+  import_save_to_resource: '保存到注释资源',
+  import_existing_entries: '已有 {count} 条注释，新导入的将追加到末尾',
+  import_matched_verses: '条已匹配经文',
+  import_unmatched_entries: '条未匹配',
+  import_no_ref: '未识别经文',
+  import_paste_text: '粘贴文本',
+  import_paste_text_desc: '直接粘贴注释文本，系统自动识别经文引用',
+  import_paste_format: '支持各种格式',
+  import_paste_hint: '支持多种经文引用格式自动识别：\n· 创世记1:1 / 创1:1 / Gen 1:1\n· 马太福音3:16 / 太3:16 / Matt 3:16\n· 1:1（纯章节格式）\n\n每条注释以经文引用开头，后面跟注释内容。',
+  import_paste_placeholder: '在此粘贴注释文本...\n\n例如：\n太1:1 亚伯拉罕的后裔，大卫的子孙，耶稣基督的家谱...\n\n太1:2 亚伯拉罕生以撒，以撒生雅各...',
+  import_parse_btn: '智能解析',
+  import_empty_text: '请输入文本内容',
+  import_loaded: '已加载 {count} 条导入数据',
+  commentary_read_btn: '阅读',
+  commentary_import_save_success: '成功导入 {count} 条注释！',
+
   // 词典详情页
   dict_detail_edit_entries: '编辑词条',
   dict_detail_stat_entries: '词条总数',
