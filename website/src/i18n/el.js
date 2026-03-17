@@ -323,6 +323,9 @@ export default {
   // Smart Format
   smart_format: 'Έξυπνη μορφοποίηση',
   smart_format_preview: 'Προεπισκόπηση',
+  be_smart_format_full_bible: 'Ολόκληρη η Βίβλος',
+  be_n_books_unit: 'βιβλία',
+  be_more_chapters: '... {count} ακόμα κεφάλαια',
   smart_format_hint: 'Ελέγξτε τη μορφή:',
   smart_format_success: 'Μορφοποίηση ολοκληρώθηκε, {count} εδάφια',
   smart_format_empty: 'Δεν βρέθηκε έγκυρο περιεχόμενο',
@@ -580,5 +583,14 @@ export default {
   create_dict_id_ph: 'Leave blank to auto-generate',
   create_dict_submit: 'Create',
   create_dict_success: 'Dictionary created successfully',
-  create_dict_failed: 'Creation failed: '
+  create_dict_failed: 'Creation failed: ',
+  be_mark_place: 'Τόποι',
+  be_smart_annotation: 'Έξυπνος σχολιασμός πλαισίου',
+  be_entity_person: 'Πρόσωπο',
+  be_entity_place: 'Τόπος',
+  be_entity_subtype: 'Υποτύπος',
+  be_entity_confidence: 'Εμπιστοσύνη',
+  be_confidence_high: 'Υψηλή',
+  be_confidence_medium: 'Μέτρια',
+  be_confidence_low: 'Χαμηλή'
 }

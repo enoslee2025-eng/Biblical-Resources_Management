@@ -323,6 +323,9 @@ export default {
   // Smart Format
   smart_format: 'עיצוב חכם',
   smart_format_preview: 'תצוגה מקדימה של עיצוב חכם',
+  be_smart_format_full_bible: 'כל הספר',
+  be_n_books_unit: 'ספרים',
+  be_more_chapters: '... עוד {count} פרקים',
   smart_format_hint: 'אשר את פורמט הפסוקים שזוהה אוטומטית:',
   smart_format_success: 'העיצוב הושלם, סה"כ {count} פסוקים',
   smart_format_empty: 'לא זוהה תוכן פסוקים תקין',
@@ -580,5 +583,14 @@ export default {
   create_dict_id_ph: 'Leave blank to auto-generate',
   create_dict_submit: 'Create',
   create_dict_success: 'Dictionary created successfully',
-  create_dict_failed: 'Creation failed: '
+  create_dict_failed: 'Creation failed: ',
+  be_mark_place: 'שמות מקומות',
+  be_smart_annotation: 'הערה חכמה לפי הקשר',
+  be_entity_person: 'שם אדם',
+  be_entity_place: 'שם מקום',
+  be_entity_subtype: 'תת-סוג',
+  be_entity_confidence: 'רמת ודאות',
+  be_confidence_high: 'גבוהה',
+  be_confidence_medium: 'בינונית',
+  be_confidence_low: 'נמוכה'
 }

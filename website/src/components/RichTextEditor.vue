@@ -93,6 +93,20 @@ const PersonName = Mark.create({
 })
 
 /**
+ * 自定义地名标注扩展
+ * 渲染为 <span class="place-name">，让 TipTap 识别并保留此标签
+ */
+const PlaceName = Mark.create({
+  name: 'placeName',
+  parseHTML() {
+    return [{ tag: 'span.place-name' }]
+  },
+  renderHTML() {
+    return ['span', { class: 'place-name' }, 0]
+  }
+})
+
+/**
  * 自定义字号扩展（基于 TextStyle）
  * TipTap 默认不包含字号控制，通过扩展 mark 添加 fontSize 属性
  */
@@ -149,6 +163,7 @@ const editor = useEditor({
     StarterKit,
     Underline,
     PersonName,
+    PlaceName,
     FontSize,
     FontFamily,
     Color,
@@ -352,6 +367,15 @@ onBeforeUnmount(() => {
 .rich-content :deep(.tiptap .person-name) {
   text-decoration: underline;
   text-decoration-color: #333;
+  text-underline-offset: 3px;
+  color: inherit;
+  cursor: default;
+}
+
+/* 地名标注样式 */
+.rich-content :deep(.tiptap .place-name) {
+  text-decoration: underline wavy;
+  text-decoration-color: var(--church-navy, #3d5a80);
   text-underline-offset: 3px;
   color: inherit;
   cursor: default;

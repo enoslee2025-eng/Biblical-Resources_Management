@@ -153,6 +153,28 @@ public class ResourceResource {
     }
 
     /**
+     * 删除单个版本
+     * @param versionId 版本ID
+     */
+    @DELETE
+    @Path("/version/{versionId}")
+    public Result<Void> deleteVersion(@PathParam("versionId") Long versionId) {
+        resourceService.deleteVersion(userContext.getUserId(), versionId);
+        return Result.ok();
+    }
+
+    /**
+     * 清空资源的所有版本历史
+     * @param id 资源ID
+     */
+    @DELETE
+    @Path("/versions/{id}")
+    public Result<Void> clearVersions(@PathParam("id") Long id) {
+        resourceService.clearVersions(userContext.getUserId(), id);
+        return Result.ok();
+    }
+
+    /**
      * 导入内容（前端本地解析后上传）
      * 接收解析好的文字内容，创建一条新资源记录
      */

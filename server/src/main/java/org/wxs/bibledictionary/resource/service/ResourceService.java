@@ -450,6 +450,45 @@ public class ResourceService {
     }
 
     /**
+     * 删除单个版本
+     * @param userId 当前用户ID
+     * @param versionId 版本ID
+     */
+    @Transactional
+    public void deleteVersion(Long userId, Long versionId) {
+        ResourceVersion version = ResourceVersion.findById(versionId);
+        if (version == null) {
+            throw new BusinessException(404, "版本不存在");
+        }
+
+        // 验证资源归属
+        Resource resource = Resource.findById(version.resourceId);
+        if (resource == null || !resource.userId.equals(userId)) {
+            throw new BusinessException(403, "无权删除此版本");
+        }
+
+        version.delete();
+    }
+
+    /**
+     * 清空资源的所有版本历史
+     * @param userId 当前用户ID
+     * @param resourceId 资源ID
+     */
+    @Transactional
+    public void clearVersions(Long userId, Long resourceId) {
+        Resource resource = Resource.findById(resourceId);
+        if (resource == null) {
+            throw new BusinessException(404, "资源不存在");
+        }
+        if (!resource.userId.equals(userId)) {
+            throw new BusinessException(403, "无权操作此资源");
+        }
+
+        ResourceVersion.delete("resourceId = ?1", resourceId);
+    }
+
+    /**
      * 计算资源内容摘要 JSON
      * 根据资源类型解析 contentJson，生成轻量级摘要用于列表展示
      * @param type 资源类型

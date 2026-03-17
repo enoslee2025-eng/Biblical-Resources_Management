@@ -188,7 +188,12 @@ async function parseFile(file) {
     case 'txt':
       return await readAsText(file)
     case 'doc':
-      throw new Error(t('import_doc_not_supported'))
+      /* 尝试用 mammoth 解析 .doc 文件，部分 .doc 实际是 docx 格式 */
+      try {
+        return await parseDocx(file)
+      } catch {
+        throw new Error(t('import_doc_not_supported'))
+      }
     case 'docx':
       return await parseDocx(file)
     case 'pdf':

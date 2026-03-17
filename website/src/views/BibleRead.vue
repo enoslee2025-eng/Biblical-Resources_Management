@@ -992,6 +992,23 @@ onMounted(() => {
   color: inherit;
 }
 
+/* 高置信度标注 */
+.verse-text :deep(.confidence-high) {
+  opacity: 1;
+}
+
+/* 中置信度标注（虚线） */
+.verse-text :deep(.confidence-medium) {
+  opacity: 0.85;
+  text-decoration-style: dashed !important;
+}
+
+/* 低置信度标注（点线、淡化） */
+.verse-text :deep(.confidence-low) {
+  opacity: 0.6;
+  text-decoration-style: dotted !important;
+}
+
 /* 段落标题（如 "制定安息日"） */
 .section-heading {
   font-weight: 600;

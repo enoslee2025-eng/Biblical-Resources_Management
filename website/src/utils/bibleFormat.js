@@ -428,6 +428,56 @@ export function formatBibleText(text) {
 /* 保持旧函数名兼容 */
 export const formatBibleForApp = formatBibleText
 
+/* ========== 和合本尊称格式：「神」前加全角空格 ========== */
+
+/**
+ * 不需要加空格的含「神」复合词（非指向上帝的用法）
+ */
+const NON_DIVINE_SHEN = /[精鬼众假邪偶财灶门瘟雷风火水河海山战女天守护]神|神经|神话|神奇|神秘|神仙|神像|神庙|神殿|神坛|出神|凝神|费神|劳神|留神|提神|安神|伤神|怡神/
+
+/**
+ * 在「神」字前添加全角空格（和合本尊称格式）
+ * 规则：
+ *   - 「神」指向上帝时，前面加全角空格 U+3000
+ *   - 已有全角空格则不重复添加
+ *   - 复合词中的「神」不加（如精神、鬼神、神经等）
+ *   - 经文开头的「神」也加空格
+ *
+ * @param {string} text - 经文文本（不含节号）
+ * @returns {string} 处理后的文本
+ */
+export function addHonorificSpace(text) {
+  if (!text || !text.includes('神')) return text
+
+  let result = ''
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== '神') {
+      result += text[i]
+      continue
+    }
+
+    /* 检查前后文是否构成非尊称复合词 */
+    const contextStart = Math.max(0, i - 2)
+    const contextEnd = Math.min(text.length, i + 3)
+    const context = text.slice(contextStart, contextEnd)
+    if (NON_DIVINE_SHEN.test(context)) {
+      result += '神'
+      continue
+    }
+
+    /* 前面已经有全角空格则跳过 */
+    if (i > 0 && text[i - 1] === '\u3000') {
+      result += '神'
+      continue
+    }
+
+    /* 添加全角空格 */
+    result += '\u3000神'
+  }
+
+  return result
+}
+
 /**
  * 批量处理：将整章经文数组格式化
  *

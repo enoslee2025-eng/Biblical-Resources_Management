@@ -200,11 +200,6 @@ async function handleWordSelect(e) {
     ElMessage.warning(t('import_word_only'))
     return
   }
-  if (name.endsWith('.doc') && !name.endsWith('.docx')) {
-    ElMessage.warning(t('import_word_doc_hint'))
-    return
-  }
-
   status.value = 'processing'
   progressText.value = t('import_word_parsing')
   progressPercent.value = 50
@@ -228,7 +223,12 @@ async function handleWordSelect(e) {
     status.value = 'idle'
   } catch (err) {
     console.error('Word error:', err)
-    ElMessage.error(t('import_word_failed'))
+    /* .doc 旧格式解析失败时给出转换提示 */
+    if (name.endsWith('.doc') && !name.endsWith('.docx')) {
+      ElMessage.error(t('import_word_doc_hint'))
+    } else {
+      ElMessage.error(t('import_word_failed'))
+    }
     status.value = 'idle'
   }
 }

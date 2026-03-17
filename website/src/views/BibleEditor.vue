@@ -12,10 +12,11 @@ import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { saveLocal, updateLocal, getLocalItem, isLocalId } from '@/utils/localStore'
 import { useI18n } from 'vue-i18n'
 import { readFileContent, readMultipleFiles, mergeTexts, isSupportedFile, matchBookFromFileName, splitIntoChapters, detectBookFromContent, splitTextToVerses, smartSplitBookChapters, BIBLE_VERSE_COUNTS, isBibleJsonFormat, parseBibleJson } from '@/utils/fileImport'
-import { formatVersesForApp } from '@/utils/bibleFormat'
+import { formatVersesForApp, addHonorificSpace } from '@/utils/bibleFormat'
 import { parseBibleText, splitMergedVerses } from '@/utils/bibleVerseParser'
 import { markPersonNames, clearPersonNameMarks, markPlainTextPersonNames } from '@/utils/biblePersonNames'
 import { markPlaceNames, clearPlaceNameMarks, markPlainTextPlaceNames } from '@/utils/biblePlaceNames'
+import { smartAnnotate, clearSmartAnnotations, annotateText, getAnnotationStats } from '@/utils/bibleSmartAnnotation'
 import VersionHistory from '@/components/VersionHistory.vue'
 import RichTextEditor from '@/components/RichTextEditor.vue'
 
@@ -188,7 +189,7 @@ const showSmartFormatPreview = ref(false)
 /** 智能格式化后的预览数据 */
 const smartFormatResult = ref(null)
 
-/** 智能排版范围：chapter 本章 / book 本卷书 */
+/** 智能排版范围：chapter 本章 / book 本卷书 / fullBible 全书 */
 const smartFormatScope = ref('chapter')
 
 /** 图片上传输入框 ref */
@@ -232,6 +233,21 @@ const personNameMarkEnabled = ref(false)
 
 /** 地名标注是否开启 */
 const placeNameMarkEnabled = ref(false)
+
+/** 智能标注是否开启（上下文感知模式） */
+const smartAnnotationEnabled = ref(false)
+
+/** 标注信息卡弹窗状态 */
+const entityPopover = reactive({
+  visible: false,
+  x: 0,
+  y: 0,
+  name: '',
+  type: '',
+  subtype: '',
+  confidence: '',
+  source: ''
+})
 
 /** 注释弹窗状态 */
 const annotationDialog = reactive({
@@ -973,7 +989,7 @@ function saveRawRichToChapter() {
       const existing = chapter.verses?.[verses.length]
       if (existing?.note) obj.note = existing.note
       /* 如果 HTML 中包含标注 span，保存 markedText */
-      if (innerHtml && (innerHtml.includes('person-name') || innerHtml.includes('place-name'))) {
+      if (innerHtml && (innerHtml.includes('person-name') || innerHtml.includes('place-name') || innerHtml.includes('smart-annotation'))) {
         obj.markedText = innerHtml
       }
       /* 绑定暂存的段落标题到该节 */
@@ -2051,10 +2067,64 @@ async function confirmImport() {
 }
 
 /**
+ * 智能排版下拉菜单命令处理
+ * @param {string} scope - chapter / book / fullBible
+ */
+function handleSmartFormatCommand(scope) {
+  smartFormatScope.value = scope
+  smartFormatText()
+}
+
+/**
  * 智能排版：与导入使用相同的解析规则
- * 支持本章和本卷书两种范围
+ * 支持本章、本卷书和全书三种范围
  */
 function smartFormatText() {
+  if (smartFormatScope.value === 'fullBible') {
+    /* 全书模式：遍历所有书卷，对每卷已有 sourceImportText 的章重新排版 */
+    let totalVerses = 0
+    let totalChapters = 0
+    const allBooks = []
+
+    for (let bIdx = 0; bIdx < books.value.length; bIdx++) {
+      const book = books.value[bIdx]
+      if (!book || !book.chapters) continue
+      const bookChapters = []
+
+      for (let cIdx = 0; cIdx < book.chapters.length; cIdx++) {
+        const ch = book.chapters[cIdx]
+        /* 使用章节已有的 sourceImportText 或已有经文文本 */
+        const src = ch.sourceImportText || (ch.verses && ch.verses.length > 0 ? ch.verses.map(v => `${v.verse} ${v.text}`).join('\n') : '')
+        if (!src.trim()) continue
+        const verses = splitTextToVerses(src)
+        if (verses.length > 0) {
+          bookChapters.push({ chapter: cIdx + 1, verses })
+          totalVerses += verses.length
+          totalChapters++
+        }
+      }
+
+      if (bookChapters.length > 0) {
+        allBooks.push({ bookIndex: bIdx, bookName: book.name, chapters: bookChapters })
+      }
+    }
+
+    if (totalVerses === 0) {
+      ElMessage.warning(t('be_no_valid_verses'))
+      return
+    }
+    smartFormatResult.value = {
+      allBooks,
+      chapters: allBooks.flatMap(b => b.chapters),
+      totalChapters,
+      totalVerses,
+      isMultiChapter: true,
+      isFullBible: true
+    }
+    showSmartFormatPreview.value = true
+    return
+  }
+
   const text = importText.value.trim()
   if (!text) {
     ElMessage.warning(t('be_input_content_first'))
@@ -2122,19 +2192,34 @@ function smartFormatText() {
 async function confirmSmartFormat() {
   if (!smartFormatResult.value) return
 
-  const { chapters, isMultiChapter } = smartFormatResult.value
-  const book = books.value[currentBookIndex.value]
-  if (!book) return
+  const { chapters, isMultiChapter, isFullBible, allBooks } = smartFormatResult.value
 
   /* Canonical Data Structure: text 不包含节号 */
   let totalVerses = 0
 
-  if (isMultiChapter) {
+  if (isFullBible && allBooks) {
+    /** 全书模式：遍历所有书卷写入 */
+    for (const bookData of allBooks) {
+      const book = books.value[bookData.bookIndex]
+      if (!book) continue
+      for (const ch of bookData.chapters) {
+        const chIdx = ch.chapter - 1
+        if (chIdx < 0 || chIdx >= book.chapters.length) continue
+        book.chapters[chIdx].verses = ch.verses.map(v => ({ verse: v.verse, text: addHonorificSpace(v.text) }))
+        if (ch.sectionHeadings) {
+          book.chapters[chIdx].sectionHeadings = ch.sectionHeadings
+        }
+        totalVerses += ch.verses.length
+      }
+    }
+  } else if (isMultiChapter) {
+    const book = books.value[currentBookIndex.value]
+    if (!book) return
     /** 多章模式：写入对应章节 */
     for (const ch of chapters) {
       const chIdx = ch.chapter - 1
       if (chIdx < 0 || chIdx >= book.chapters.length) continue
-      book.chapters[chIdx].verses = ch.verses.map(v => ({ verse: v.verse, text: v.text }))
+      book.chapters[chIdx].verses = ch.verses.map(v => ({ verse: v.verse, text: addHonorificSpace(v.text) }))
       /* 保存段落标题 */
       if (ch.sectionHeadings) {
         book.chapters[chIdx].sectionHeadings = ch.sectionHeadings
@@ -2148,10 +2233,12 @@ async function confirmSmartFormat() {
       currentChapterIndex.value = chapters[0].chapter - 1
     }
   } else {
+    const book = books.value[currentBookIndex.value]
+    if (!book) return
     /** 单章模式：写入当前选中章节 */
     const chapter = book.chapters[currentChapterIndex.value]
     if (chapter) {
-      chapter.verses = chapters[0].verses.map(v => ({ verse: v.verse, text: v.text }))
+      chapter.verses = chapters[0].verses.map(v => ({ verse: v.verse, text: addHonorificSpace(v.text) }))
       /* 保存段落标题 */
       if (chapters[0].sectionHeadings) {
         chapter.sectionHeadings = chapters[0].sectionHeadings
@@ -2429,7 +2516,7 @@ function goToRead() {
 }
 
 /** 是否有任何标注功能开启 */
-const anyMarkEnabled = computed(() => personNameMarkEnabled.value || placeNameMarkEnabled.value)
+const anyMarkEnabled = computed(() => personNameMarkEnabled.value || placeNameMarkEnabled.value || smartAnnotationEnabled.value)
 
 /**
  * 对纯文本应用所有已开启的标注
@@ -2438,6 +2525,14 @@ const anyMarkEnabled = computed(() => personNameMarkEnabled.value || placeNameMa
  */
 function applyAllMarks(text) {
   if (!text) return text
+  /* 智能标注模式：使用上下文感知引擎 */
+  if (smartAnnotationEnabled.value) {
+    return smartAnnotate(text, {
+      person: personNameMarkEnabled.value,
+      place: placeNameMarkEnabled.value
+    })
+  }
+  /* 旧版简单模式 */
   let result = text
   if (personNameMarkEnabled.value) result = markPlainTextPersonNames(result)
   if (placeNameMarkEnabled.value) result = markPlainTextPlaceNames(result)
@@ -2449,10 +2544,72 @@ function applyAllMarks(text) {
  */
 function applyAllMarksToHtml(html) {
   if (!html) return html
+  /* 智能标注模式下先清除旧标注再重新标注纯文本部分 */
+  if (smartAnnotationEnabled.value) {
+    /* 清除旧标注后对纯文本重新做智能标注 */
+    let cleaned = clearAllMarksFromHtml(html)
+    return smartAnnotateHtmlContent(cleaned)
+  }
   let result = html
   if (personNameMarkEnabled.value) result = markPersonNames(result)
   if (placeNameMarkEnabled.value) result = markPlaceNames(result)
   return result
+}
+
+/**
+ * 对编辑器 HTML 做智能标注（保护节号 <strong> 标签）
+ */
+function smartAnnotateHtmlContent(html) {
+  if (!html) return html
+  const tmp = document.createElement('div')
+  tmp.innerHTML = html
+  const paragraphs = tmp.querySelectorAll('p')
+  paragraphs.forEach(p => {
+    const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (node.parentElement?.tagName === 'STRONG') return NodeFilter.FILTER_REJECT
+        if (node.parentElement?.classList?.contains('smart-annotation')) return NodeFilter.FILTER_REJECT
+        if (node.parentElement?.classList?.contains('person-name')) return NodeFilter.FILTER_REJECT
+        if (node.parentElement?.classList?.contains('place-name')) return NodeFilter.FILTER_REJECT
+        return NodeFilter.FILTER_ACCEPT
+      }
+    })
+    const textNodes = []
+    let current
+    while ((current = walker.nextNode())) textNodes.push(current)
+    for (const textNode of textNodes) {
+      const text = textNode.textContent
+      if (!text || !text.trim()) continue
+      const annotations = annotateText(text, {
+        person: personNameMarkEnabled.value,
+        place: placeNameMarkEnabled.value
+      })
+      if (annotations.length === 0) continue
+      const fragment = document.createDocumentFragment()
+      let lastIdx = 0
+      for (const ann of annotations) {
+        if (ann.startOffset > lastIdx) {
+          fragment.appendChild(document.createTextNode(text.slice(lastIdx, ann.startOffset)))
+        }
+        const span = document.createElement('span')
+        const typeClass = ann.type === 'person' ? 'person-name' : 'place-name'
+        span.className = `${typeClass} confidence-${ann.confidence} smart-annotation`
+        span.dataset.entityType = ann.type
+        span.dataset.entityName = ann.normalizedName
+        span.dataset.confidence = ann.confidence
+        span.dataset.subtype = ann.subtype || ''
+        span.dataset.source = ann.source
+        span.textContent = ann.text
+        fragment.appendChild(span)
+        lastIdx = ann.endOffset
+      }
+      if (lastIdx < text.length) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIdx)))
+      }
+      textNode.parentNode.replaceChild(fragment, textNode)
+    }
+  })
+  return tmp.innerHTML
 }
 
 /**
@@ -2461,6 +2618,7 @@ function applyAllMarksToHtml(html) {
 function clearAllMarksFromHtml(html) {
   if (!html) return html
   let result = html
+  result = clearSmartAnnotations(result)
   result = clearPersonNameMarks(result)
   result = clearPlaceNameMarks(result)
   return result
@@ -2536,6 +2694,41 @@ function restorePersonNameMark() {
 function handleAutoMark(command) {
   if (command === 'person') togglePersonNameMark()
   else if (command === 'place') togglePlaceNameMark()
+  else if (command === 'smart') toggleSmartAnnotation()
+}
+
+/**
+ * 切换智能标注模式
+ * 开启后人名/地名标注使用上下文感知引擎
+ */
+function toggleSmartAnnotation() {
+  smartAnnotationEnabled.value = !smartAnnotationEnabled.value
+  /* 智能标注需要人名和地名都开启 */
+  if (smartAnnotationEnabled.value) {
+    personNameMarkEnabled.value = true
+    placeNameMarkEnabled.value = true
+  }
+  rebuildAllMarkedText()
+}
+
+/**
+ * 点击标注词显示实体信息卡
+ */
+function handleAnnotationClick(event) {
+  const target = event.target.closest('.smart-annotation')
+  if (!target) {
+    entityPopover.visible = false
+    return
+  }
+  const rect = target.getBoundingClientRect()
+  entityPopover.x = rect.left + rect.width / 2
+  entityPopover.y = rect.bottom + 6
+  entityPopover.name = target.dataset.entityName || target.textContent
+  entityPopover.type = target.dataset.entityType || ''
+  entityPopover.subtype = target.dataset.subtype || ''
+  entityPopover.confidence = target.dataset.confidence || ''
+  entityPopover.source = target.dataset.source || ''
+  entityPopover.visible = true
 }
 
 /**
@@ -2668,6 +2861,9 @@ const chapterOptions = computed(() => {
                     <el-dropdown-item command="place">
                       <span :style="{ color: placeNameMarkEnabled ? '#67c23a' : '' }">{{ placeNameMarkEnabled ? '✓ ' : '' }}{{ t('be_mark_place') }}</span>
                     </el-dropdown-item>
+                    <el-dropdown-item divided command="smart">
+                      <span :style="{ color: smartAnnotationEnabled ? '#e6a23c' : '' }">{{ smartAnnotationEnabled ? '✓ ' : '' }}{{ t('be_smart_annotation') }}</span>
+                    </el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -2702,7 +2898,7 @@ const chapterOptions = computed(() => {
             </div>
 
             <!-- 经文列表 -->
-            <div v-else class="inline-verses-list">
+            <div v-else class="inline-verses-list" @click="handleAnnotationClick">
               <template
                 v-for="(v, idx) in currentVerses"
                 :key="idx"
@@ -2939,16 +3135,20 @@ const chapterOptions = computed(() => {
 
       <template #footer>
         <el-button @click="showImportDialog = false">{{ t('cancel') }}</el-button>
-        <div v-if="importScope !== 'fullBible'" style="display: inline-flex; align-items: center; gap: 8px;">
-          <el-radio-group v-model="smartFormatScope" size="small">
-            <el-radio-button value="chapter">{{ t('be_smart_format_chapter') }}</el-radio-button>
-            <el-radio-button value="book">{{ t('be_smart_format_book') }}</el-radio-button>
-          </el-radio-group>
-          <el-button @click="smartFormatText" :disabled="importLoading">
+        <el-dropdown trigger="click" @command="handleSmartFormatCommand" :disabled="importLoading">
+          <el-button :disabled="importLoading">
             <el-icon><MagicStick /></el-icon>
             {{ t('smart_format') }}
+            <el-icon style="margin-left: 4px;"><ArrowDown /></el-icon>
           </el-button>
-        </div>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="chapter">{{ t('be_smart_format_chapter') }}</el-dropdown-item>
+              <el-dropdown-item command="book">{{ t('be_smart_format_book') }}</el-dropdown-item>
+              <el-dropdown-item command="fullBible">{{ t('be_smart_format_full_bible') }}</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button type="primary" @click="generateImportPreview" :disabled="importLoading">{{ t('be_preview_import') }}</el-button>
       </template>
     </el-dialog>
@@ -3026,25 +3226,52 @@ const chapterOptions = computed(() => {
           <el-tag v-else type="info" size="large" style="margin-left: 8px;">
             {{ t('be_write_to_chapter', { n: currentChapterIndex + 1 }) }}
           </el-tag>
+          <el-tag v-if="smartFormatResult.isFullBible && smartFormatResult.allBooks" type="warning" size="large" style="margin-left: 8px;">
+            {{ smartFormatResult.allBooks.length }} {{ t('be_n_books_unit') }}
+          </el-tag>
         </div>
 
         <p class="smart-format-hint">{{ t('smart_format_hint') }}</p>
 
         <div class="import-preview-content">
-          <div v-for="ch in smartFormatResult.chapters" :key="ch.chapter" class="preview-chapter-block">
-            <strong v-if="smartFormatResult.isMultiChapter">
-              {{ t('be_chapter_title', { book: currentBookName, chapter: ch.chapter }) }} ({{ ch.verses.length }})
-            </strong>
-            <template v-for="v in ch.verses.slice(0, smartFormatResult.isMultiChapter ? 3 : 10)" :key="v.verse">
-              <div v-if="ch.sectionHeadings && ch.sectionHeadings[v.verse]" class="preview-heading">{{ ch.sectionHeadings[v.verse] }}</div>
-              <div class="preview-line">
-                <sup class="verse-num">{{ v.verse }}</sup> {{ v.text }}
+          <!-- 全书模式：按书卷分组显示 -->
+          <template v-if="smartFormatResult.isFullBible && smartFormatResult.allBooks">
+            <div v-for="bookData in smartFormatResult.allBooks.slice(0, 5)" :key="bookData.bookIndex" class="preview-chapter-block">
+              <h4 style="margin: 8px 0 4px; color: var(--app-primary);">{{ bookData.bookName }}</h4>
+              <div v-for="ch in bookData.chapters.slice(0, 2)" :key="ch.chapter">
+                <strong>{{ t('be_chapter_n', { n: ch.chapter }) }} ({{ ch.verses.length }})</strong>
+                <div v-for="v in ch.verses.slice(0, 2)" :key="v.verse" class="preview-line">
+                  <sup class="verse-num">{{ v.verse }}</sup> {{ v.text }}
+                </div>
+                <p v-if="ch.verses.length > 2" class="preview-more">
+                  ... {{ t('be_more_verses', { count: ch.verses.length - 2 }) }}
+                </p>
               </div>
-            </template>
-            <p v-if="ch.verses.length > (smartFormatResult.isMultiChapter ? 3 : 10)" class="preview-more">
-              ... {{ t('be_more_verses', { count: ch.verses.length - (smartFormatResult.isMultiChapter ? 3 : 10) }) }}
+              <p v-if="bookData.chapters.length > 2" class="preview-more">
+                ... {{ t('be_more_chapters', { count: bookData.chapters.length - 2 }) }}
+              </p>
+            </div>
+            <p v-if="smartFormatResult.allBooks.length > 5" class="preview-more" style="text-align: center;">
+              ... {{ t('be_more_books', { count: smartFormatResult.allBooks.length - 5 }) }}
             </p>
-          </div>
+          </template>
+          <!-- 单卷/单章模式 -->
+          <template v-else>
+            <div v-for="ch in smartFormatResult.chapters" :key="ch.chapter" class="preview-chapter-block">
+              <strong v-if="smartFormatResult.isMultiChapter">
+                {{ t('be_chapter_title', { book: currentBookName, chapter: ch.chapter }) }} ({{ ch.verses.length }})
+              </strong>
+              <template v-for="v in ch.verses.slice(0, smartFormatResult.isMultiChapter ? 3 : 10)" :key="v.verse">
+                <div v-if="ch.sectionHeadings && ch.sectionHeadings[v.verse]" class="preview-heading">{{ ch.sectionHeadings[v.verse] }}</div>
+                <div class="preview-line">
+                  <sup class="verse-num">{{ v.verse }}</sup> {{ v.text }}
+                </div>
+              </template>
+              <p v-if="ch.verses.length > (smartFormatResult.isMultiChapter ? 3 : 10)" class="preview-more">
+                ... {{ t('be_more_verses', { count: ch.verses.length - (smartFormatResult.isMultiChapter ? 3 : 10) }) }}
+              </p>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -3082,6 +3309,42 @@ const chapterOptions = computed(() => {
         <el-button type="primary" @click="saveAnnotation">{{ t('confirm') }}</el-button>
       </template>
     </el-dialog>
+
+    <!-- 标注实体信息卡弹窗 -->
+    <teleport to="body">
+      <div
+        v-if="entityPopover.visible"
+        class="entity-popover"
+        :style="{ left: entityPopover.x + 'px', top: entityPopover.y + 'px' }"
+        @click.stop
+      >
+        <div class="entity-popover-arrow"></div>
+        <div class="entity-popover-header">
+          <span class="entity-popover-name">{{ entityPopover.name }}</span>
+          <el-tag size="small" :type="entityPopover.type === 'person' ? '' : 'success'" effect="plain">
+            {{ entityPopover.type === 'person' ? t('be_entity_person') : t('be_entity_place') }}
+          </el-tag>
+        </div>
+        <div class="entity-popover-body">
+          <div v-if="entityPopover.subtype" class="entity-popover-row">
+            <span class="entity-popover-label">{{ t('be_entity_subtype') }}:</span>
+            <span>{{ entityPopover.subtype }}</span>
+          </div>
+          <div class="entity-popover-row">
+            <span class="entity-popover-label">{{ t('be_entity_confidence') }}:</span>
+            <el-tag
+              size="small"
+              :type="entityPopover.confidence === 'high' ? 'success' : entityPopover.confidence === 'medium' ? 'warning' : 'danger'"
+              effect="light"
+            >
+              {{ t('be_confidence_' + entityPopover.confidence) }}
+            </el-tag>
+          </div>
+        </div>
+        <div class="entity-popover-close" @click="entityPopover.visible = false">&times;</div>
+      </div>
+      <div v-if="entityPopover.visible" class="entity-popover-mask" @click="entityPopover.visible = false"></div>
+    </teleport>
   </div>
 </template>
 
@@ -3903,5 +4166,129 @@ const chapterOptions = computed(() => {
   padding: 24px 28px;
   max-height: 70vh;
   overflow-y: auto;
+}
+
+/* ============ 智能标注置信度样式 ============ */
+
+/* 人名标注（黑色下划线） */
+:deep(.person-name) {
+  text-decoration: underline;
+  text-decoration-color: #333;
+  text-underline-offset: 3px;
+  color: inherit;
+}
+
+/* 地名标注（蓝色波浪线） */
+:deep(.place-name) {
+  text-decoration: underline wavy;
+  text-decoration-color: var(--church-navy, #3d5a80);
+  text-underline-offset: 3px;
+  color: inherit;
+}
+
+/* 高置信度标注 —— 实线、全透明度 */
+:deep(.confidence-high) {
+  opacity: 1;
+  cursor: pointer;
+}
+
+/* 中置信度标注 —— 虚线边框 */
+:deep(.confidence-medium) {
+  opacity: 0.85;
+  text-decoration-style: dashed !important;
+  cursor: pointer;
+}
+
+/* 低置信度标注 —— 点线、淡化 */
+:deep(.confidence-low) {
+  opacity: 0.6;
+  text-decoration-style: dotted !important;
+  cursor: help;
+}
+
+/* 智能标注悬浮效果 */
+:deep(.smart-annotation:hover) {
+  background: rgba(64, 158, 255, 0.08);
+  border-radius: 2px;
+}
+</style>
+
+<!-- 实体信息卡弹窗样式（非 scoped） -->
+<style>
+.entity-popover {
+  position: fixed;
+  z-index: 9999;
+  transform: translateX(-50%);
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 12px 16px;
+  min-width: 180px;
+  max-width: 280px;
+  font-size: 13px;
+}
+.entity-popover-arrow {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 6px;
+  overflow: hidden;
+}
+.entity-popover-arrow::before {
+  content: '';
+  display: block;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  transform: rotate(45deg) translate(2px, 2px);
+  box-shadow: -1px -1px 4px rgba(0, 0, 0, 0.06);
+}
+.entity-popover-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.entity-popover-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: #303133;
+}
+.entity-popover-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.entity-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #606266;
+}
+.entity-popover-label {
+  color: #909399;
+  flex-shrink: 0;
+}
+.entity-popover-close {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  color: #909399;
+  line-height: 1;
+}
+.entity-popover-close:hover {
+  color: #303133;
+}
+.entity-popover-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9998;
 }
 </style>

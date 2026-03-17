@@ -323,6 +323,9 @@ export default {
   // Smart Format
   smart_format: 'စမတ် ဖော်မက်',
   smart_format_preview: 'စမတ် ဖော်မက် အကြိုကြည့်',
+  be_smart_format_full_bible: 'စာအုပ်တစ်အုပ်လုံး',
+  be_n_books_unit: 'အုပ်',
+  be_more_chapters: '... နောက်ထပ် {count} အခန်း',
   smart_format_hint: 'အလိုအလျောက် ရှာတွေ့သော ပုံစံကို စစ်ဆေးပါ:',
   smart_format_success: 'ဖော်မက် ပြီး၊ စုစုပေါင်း {count} ပိုဒ်',
   smart_format_empty: 'ကျမ်းပိုဒ် ရှာမတွေ့ပါ',
@@ -580,5 +583,14 @@ export default {
   create_dict_id_ph: 'Leave blank to auto-generate',
   create_dict_submit: 'Create',
   create_dict_success: 'Dictionary created successfully',
-  create_dict_failed: 'Creation failed: '
+  create_dict_failed: 'Creation failed: ',
+  be_mark_place: 'နေရာအမည်များ',
+  be_smart_annotation: 'စမတ်ကြောင်းကျိုးမှတ်ချက်',
+  be_entity_person: 'လူနာမည်',
+  be_entity_place: 'နေရာအမည်',
+  be_entity_subtype: 'အမျိုးအစားခွဲ',
+  be_entity_confidence: 'ယုံကြည်မှု',
+  be_confidence_high: 'မြင့်',
+  be_confidence_medium: 'အလယ်',
+  be_confidence_low: 'နိမ့်'
 }

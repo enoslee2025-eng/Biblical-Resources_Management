@@ -279,7 +279,7 @@ onMounted(() => {
 .hero {
   position: relative;
   height: 420px;
-  background: url('/images/hero-bible.jpg') center / cover no-repeat;
+  background: url('/images/hero-bible.svg') center / cover no-repeat;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -290,7 +290,7 @@ onMounted(() => {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, rgba(15, 25, 35, 0.3) 0%, rgba(15, 25, 35, 0.6) 100%);
+    linear-gradient(180deg, rgba(44, 30, 16, 0.25) 0%, rgba(44, 30, 16, 0.5) 100%);
   pointer-events: none;
 }
 
