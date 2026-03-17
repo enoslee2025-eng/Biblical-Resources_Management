@@ -456,7 +456,7 @@ onMounted(() => {
 .stat-card {
   background: var(--church-cream, #f0f4f8);
   border-radius: 8px;
-  padding: 28px 20px;
+  padding: 20px 16px;
   text-align: center;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -471,10 +471,10 @@ onMounted(() => {
 
 .stat-number {
   font-family: 'Georgia', 'Noto Serif SC', serif;
-  font-size: 42px;
+  font-size: 28px;
   font-weight: 700;
   line-height: 1;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   letter-spacing: -1px;
 }
 
@@ -827,7 +827,7 @@ onMounted(() => {
   }
 
   .stat-number {
-    font-size: 32px;
+    font-size: 24px;
   }
 
   .module-cards {
