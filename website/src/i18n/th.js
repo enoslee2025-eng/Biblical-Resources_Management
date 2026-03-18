@@ -730,6 +730,7 @@ export default {
   block_type_preface: 'Preface',
   block_type_chapter: 'Chapter',
   block_type_section: 'Section',
+  block_type_toc: 'สารบัญ',
   block_type_verse_ref: 'Verse',
   block_type_body: 'Body',
   block_type: 'Block Type',

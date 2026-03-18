@@ -61,13 +61,65 @@ const docAuthor = computed(() => {
  * - body 块尝试从内容中提取经文引用作为标签
  * - 连续无标题 body 块合并到上一个导航项下
  */
+/**
+ * 从目录(toc)段落的内容中提取条目，匹配到对应的章节索引
+ */
+function parseTocEntries(tocContent, allSections) {
+  if (!tocContent) return []
+  const lines = tocContent.split(/\n/).map(l => l.trim()).filter(Boolean)
+  const entries = []
+
+  for (const line of lines) {
+    /* 清理装饰符号和编号前缀 */
+    const cleaned = line.replace(/^[◆◇●○■□★☆·•▶▪►\-–—\s\d.．、]+/, '').trim()
+    if (!cleaned || cleaned.length > 60) continue
+
+    /* 尝试匹配到实际的章节 */
+    let matchedIdx = -1
+    for (let j = 0; j < allSections.length; j++) {
+      const sec = allSections[j]
+      if (sec.type === 'toc') continue
+      const secTitle = cleanTitle(sec.title || '')
+      if (secTitle && (secTitle === cleaned || secTitle.includes(cleaned) || cleaned.includes(secTitle))) {
+        matchedIdx = j
+        break
+      }
+    }
+
+    entries.push({ label: cleaned, sectionIndex: matchedIdx })
+  }
+
+  return entries
+}
+
 const navItems = computed(() => {
   const items = []
   /** 导航有意义的块类型 */
   const navTypes = ['document_title', 'author', 'preface', 'chapter_title', 'section_title', 'verse_ref']
 
+  /* 检查是否有文档自带的目录(toc)段落 */
+  const tocSection = sections.value.find(s => s.type === 'toc')
+  if (tocSection) {
+    /* 使用文档自带的目录作为导航，将每个条目映射到对应章节 */
+    const tocEntries = parseTocEntries(tocSection.content, sections.value)
+    for (const entry of tocEntries) {
+      if (entry.sectionIndex >= 0) {
+        items.push({
+          sectionIndex: entry.sectionIndex,
+          label: entry.label,
+          type: sections.value[entry.sectionIndex]?.type || 'body'
+        })
+      }
+    }
+    /* 如果 TOC 条目成功匹配到了章节，直接使用 */
+    if (items.length > 0) return items
+  }
+
   for (let i = 0; i < sections.value.length; i++) {
     const sec = sections.value[i]
+
+    /* toc 类型本身不作为导航项 */
+    if (sec.type === 'toc') continue
 
     /* 非 body 类型：直接作为导航项 */
     if (navTypes.includes(sec.type)) {
@@ -219,6 +271,7 @@ function getTypeLabel(type) {
     chapter_title: t('block_type_chapter'),
     section_title: t('block_type_section'),
     verse_ref: t('block_type_verse_ref'),
+    toc: t('block_type_toc'),
     body: t('block_type_body')
   }
   return labels[type] || ''
@@ -233,6 +286,7 @@ function getTypeIcon(type) {
     chapter_title: '📑',
     section_title: '§',
     verse_ref: '📜',
+    toc: '📋',
     body: ''
   }
   return icons[type] || ''
@@ -281,7 +335,7 @@ function reAnalyzeSections(entries) {
 
     /* 目录标记 */
     if (newType === 'body' && /^(目录|目次|contents|table\s+of\s+contents)$/i.test(title)) {
-      newType = 'section_title'
+      newType = 'toc'
     }
 
     /* 章标题：第X章 / X章 / Chapter X */
@@ -517,6 +571,18 @@ onMounted(() => { loadDetail() })
                 {{ cleanTitle(sec.title) }}
               </div>
 
+              <!-- 目录（不划分段落，干净列表） -->
+              <div v-else-if="sec.type === 'toc'" class="smart-toc">
+                <div class="smart-toc-label">{{ cleanTitle(sec.title) }}</div>
+                <ul class="smart-toc-list">
+                  <li
+                    v-for="(line, lIdx) in (sec.content || '').split('\n').filter(l => l.trim())"
+                    :key="lIdx"
+                    class="smart-toc-item"
+                  >{{ line.trim() }}</li>
+                </ul>
+              </div>
+
               <!-- 序言 -->
               <div v-else-if="sec.type === 'preface'" class="smart-preface">
                 <div class="smart-preface-label">{{ cleanTitle(sec.title) }}</div>
@@ -548,10 +614,10 @@ onMounted(() => { loadDetail() })
               </div>
             </template>
 
-            <!-- 原文模式 -->
+            <!-- 原文模式：完全尊重原始格式，不做任何排版调整 -->
             <template v-else>
-              <h2 class="content-title content-title-plain">{{ sec.title }}</h2>
-              <div class="content-body content-body-plain" v-html="formatPlainContent(sec.content)"></div>
+              <div v-if="sec.title" class="original-title">{{ sec.title }}</div>
+              <div v-if="sec.content" class="original-content" v-html="formatPlainContent(sec.content)"></div>
             </template>
           </div>
         </div>
@@ -568,8 +634,8 @@ onMounted(() => { loadDetail() })
                 :id="'section-' + idx"
                 class="section-block"
               >
-                <h2 class="content-title content-title-plain">{{ sec.title }}</h2>
-                <div class="content-body content-body-plain" v-html="formatPlainContent(sec.content)"></div>
+                <div v-if="sec.title" class="original-title">{{ sec.title }}</div>
+                <div v-if="sec.content" class="original-content" v-html="formatPlainContent(sec.content)"></div>
               </div>
             </div>
           </div>
@@ -585,6 +651,12 @@ onMounted(() => { loadDetail() })
                 <div v-if="sec.type === 'chapter_title' && idx > 0" class="chapter-divider"></div>
                 <div v-if="sec.type === 'document_title'" class="smart-doc-title"><h1>{{ cleanTitle(sec.title) }}</h1></div>
                 <div v-else-if="sec.type === 'author'" class="smart-author">{{ cleanTitle(sec.title) }}</div>
+                <div v-else-if="sec.type === 'toc'" class="smart-toc">
+                  <div class="smart-toc-label">{{ cleanTitle(sec.title) }}</div>
+                  <ul class="smart-toc-list">
+                    <li v-for="(line, lIdx) in (sec.content || '').split('\n').filter(l => l.trim())" :key="lIdx" class="smart-toc-item">{{ line.trim() }}</li>
+                  </ul>
+                </div>
                 <div v-else-if="sec.type === 'preface'" class="smart-preface">
                   <div class="smart-preface-label">{{ cleanTitle(sec.title) }}</div>
                   <div class="smart-preface-body" v-html="formatContent(sec.content)"></div>
@@ -858,24 +930,18 @@ onMounted(() => { loadDetail() })
 }
 .section-block:last-child { margin-bottom: 80px; }
 
-/* ========== 原文模式（plain） ========== */
+/* ========== 原文模式（完全保留原始格式） ========== */
 .plain-block {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
-.content-title-plain {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--church-charcoal, #3a3a3a);
-  margin: 0 0 8px 0;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--church-border, #e0d8cf);
+.original-title {
+  margin: 0 0 4px 0;
 }
 
-.content-body-plain {
-  font-size: 15px;
-  color: var(--church-charcoal, #3a3a3a);
-  line-height: 1.8;
+.original-content {
+  color: inherit;
+  line-height: inherit;
 }
 
 /* ========== 智能模式（smart） ========== */
@@ -886,6 +952,7 @@ onMounted(() => { loadDetail() })
 .smart-block-preface { margin-bottom: 24px; }
 .smart-block-section_title { margin-bottom: 16px; }
 .smart-block-verse_ref { margin-bottom: 20px; }
+.smart-block-toc { margin-bottom: 24px; }
 .smart-block-body { margin-bottom: 4px; }
 
 /* --- 章节分隔线 --- */
@@ -922,6 +989,28 @@ onMounted(() => { loadDetail() })
   font-style: italic;
   padding-bottom: 16px;
   border-bottom: 2px solid var(--church-border, #e0d8cf);
+}
+
+/* --- 目录（干净列表，无段落线） --- */
+.smart-toc {
+  padding: 12px 0;
+}
+.smart-toc-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--church-charcoal, #3a3a3a);
+  margin-bottom: 12px;
+}
+.smart-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.smart-toc-item {
+  font-size: 14px;
+  color: #555;
+  padding: 4px 0 4px 12px;
+  line-height: 1.6;
 }
 
 /* --- 序言 --- */

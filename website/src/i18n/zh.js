@@ -821,6 +821,7 @@ export default {
   block_type_preface: '前言',
   block_type_chapter: '章节',
   block_type_section: '小节',
+  block_type_toc: '目录',
   block_type_verse_ref: '经文',
   block_type_body: '正文',
   block_type: '块类型',
