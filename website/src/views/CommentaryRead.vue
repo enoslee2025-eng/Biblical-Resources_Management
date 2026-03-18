@@ -11,7 +11,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getResourceDetail } from '@/api/resource'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import { parseCommentaryText, findAllScriptureRefs } from '@/utils/fileImport'
+import { parseCommentaryText, findAllScriptureRefs, detectScriptureRef } from '@/utils/fileImport'
 
 const route = useRoute()
 const router = useRouter()
@@ -223,6 +223,69 @@ function getTypeIcon(type) {
   return icons[type] || ''
 }
 
+/**
+ * 智能重新分析段落类型
+ * 当数据中所有段落都是 body 类型时，自动识别章标题、经文引用、序言等
+ * 让智能模式能展现差异化排版
+ */
+function reAnalyzeSections(entries) {
+  if (!entries || entries.length === 0) return entries
+
+  /* 检查是否全部为 body 类型（或无类型） */
+  const allBody = entries.every(e => !e.type || e.type === 'body')
+  if (!allBody) return entries
+
+  let hasDocTitle = false
+  return entries.map((entry, idx) => {
+    const title = (entry.title || '').trim()
+    const content = (entry.content || '').trim()
+    const fullText = title + ' ' + content
+    let newType = 'body'
+
+    /* 文档标题：前2个条目中的短标题 */
+    if (!hasDocTitle && idx < 2 && title.length <= 40 && title.length > 0) {
+      if (/[著编译撰整理]|作者|译者|编者|by\s/i.test(title)) {
+        newType = 'author'
+      } else if (title.length <= 30 && !content) {
+        newType = 'document_title'
+        hasDocTitle = true
+      }
+    }
+
+    /* 章标题：第X章 / Chapter X */
+    if (newType === 'body' && /^第[\s\d一二三四五六七八九十百零〇]+[章篇部]/.test(title)) {
+      newType = 'chapter_title'
+    } else if (newType === 'body' && /^(chapter|part)\s+\d+/i.test(title)) {
+      newType = 'chapter_title'
+    }
+
+    /* 序言/前言 */
+    if (newType === 'body' && /^(序言|前言|引言|简介|概论|导论|绪论|概述|preface|introduction)/i.test(title)) {
+      newType = 'preface'
+    }
+
+    /* 小节标题：编号开头的短标题 */
+    if (newType === 'body' && title.length <= 30 && (
+      /^[一二三四五六七八九十]+[、.]/.test(title) ||
+      /^\d+[、.]/.test(title) ||
+      /^[（(]\s*\d+\s*[）)]/.test(title)
+    )) {
+      newType = 'section_title'
+    }
+
+    /* 经文引用开头 */
+    if (newType === 'body') {
+      const checkText = title || content.split('\n')[0] || ''
+      if (/^\s*[\(（]?\s*[一二三\u4e00-\u9fff]{1,8}\s*\d{1,3}\s*[:：章篇]/.test(checkText) ||
+          /^\s*[\(（]?\s*[123]?\s*[A-Za-z]{2,15}\.?\s+\d{1,3}\s*:/.test(checkText)) {
+        newType = 'verse_ref'
+      }
+    }
+
+    return { ...entry, type: newType }
+  })
+}
+
 /** 加载资源详情 */
 async function loadDetail() {
   loading.value = true
@@ -235,7 +298,7 @@ async function loadDetail() {
     if (detail.contentJson) {
       let parsed = JSON.parse(detail.contentJson)
       if (Array.isArray(parsed)) {
-        sections.value = normalizeEntries(parsed)
+        sections.value = reAnalyzeSections(normalizeEntries(parsed))
       } else if (parsed && typeof parsed === 'object' && parsed.text) {
         sections.value = parseCommentaryText(parsed.text)
       } else {
