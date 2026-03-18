@@ -1634,7 +1634,7 @@ onBeforeUnmount(() => {
 .smart-block-preface { margin-bottom: 24px; }
 .smart-block-unit_title { margin-bottom: 8px; }
 .smart-block-section_title { margin-bottom: 5px; }
-.smart-block-verse_ref { margin-bottom: 14px; }
+.smart-block-verse_ref { margin-bottom: 4px; }
 .smart-block-scripture_block { margin-bottom: 18px; }
 .smart-block-numbered_note { margin-bottom: 14px; }
 .smart-block-toc { margin-bottom: 36px; }
@@ -1800,16 +1800,16 @@ onBeforeUnmount(() => {
   margin-top: 5px;
 }
 
-/* --- 经文引用（短引） --- */
+/* --- 经文引用（短引，不作为明显分段标记） --- */
 .smart-verse {
-  padding: 10px 0 4px 0;
+  padding: 2px 0 2px 0;
 }
 .smart-verse-ref {
-  font-family: var(--smart-font-heading);
+  font-family: var(--smart-font-body);
   font-size: 13px;
-  font-weight: 600;
-  color: #6B5B53;
-  margin-bottom: 4px;
+  font-weight: 400;
+  color: #888888;
+  margin-bottom: 2px;
 }
 .smart-verse-body {
   font-family: var(--smart-font-body);
@@ -1823,11 +1823,11 @@ onBeforeUnmount(() => {
   padding: 8px 0;
 }
 .smart-scripture-ref {
-  font-family: var(--smart-font-heading);
+  font-family: var(--smart-font-body);
   font-size: 13px;
-  font-weight: 600;
-  color: #6B5B53;
-  margin-bottom: 8px;
+  font-weight: 400;
+  color: #888888;
+  margin-bottom: 4px;
 }
 .smart-scripture-body {
   font-family: var(--smart-font-scripture);
