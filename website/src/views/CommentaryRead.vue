@@ -200,9 +200,11 @@ function escapeHtml(str) {
 function cleanText(text) {
   if (!text) return ''
   let t = text
-  /* 删除 PAGE 标记和孤立页码 */
+  /* 删除 PAGE / 分页残留标记和孤立页码 */
   t = t.replace(/\bPAGE\b\s*\d*/gi, '')
   t = t.replace(/^\s*[-—]?\s*\d{1,4}\s*[-—]?\s*$/gm, '')
+  /* 删除孤立装饰符号行（只有符号没有文字） */
+  t = t.replace(/^\s*[◆◇●○■□★☆·•▶▪►\-–—=＝_＿*＊~～]{2,}\s*$/gm, '')
   /* 删除重复空行（最多保留一个） */
   t = t.replace(/\n{3,}/g, '\n\n')
   /* 修复断裂标点：标点被错误换行到下一行 */
@@ -211,26 +213,43 @@ function cleanText(text) {
   t = t.replace(/([（「『【《\(])\s*\n\s*/g, '$1')
   /* 统一经文引用中的冒号：数字:数字 → 数字：数字 */
   t = t.replace(/(\d)\s*:\s*(\d)/g, '$1：$2')
+  /* 统一引号：直引号→弯引号（正文环境） */
+  t = t.replace(/"([^"]{1,200})"/g, '\u201c$1\u201d')
   /* 修复残缺括号：只有左括号没有右括号的行尾补全 */
   t = t.replace(/([（(][^）)\n]{1,30})\s*\n/g, (match, p1) => {
     if (!/[）)]/.test(p1)) return p1 + '）\n'
     return match
   })
+  /* 修复标点前后多余空格（中文标点两侧不应有空格） */
+  t = t.replace(/\s+([，。！？；：、）」』】》])/g, '$1')
+  t = t.replace(/([（「『【《])\s+/g, '$1')
   /* 清理行尾空格 */
   t = t.replace(/[ \t]+$/gm, '')
   /* 清理段首多余空格（保留编号符号行） */
   t = t.replace(/^[ \t]+(?![①②③④⑤⑥⑦⑧⑨⑩])/gm, '')
-  /* 合并被错误断开的短行（<12字、不以句末标点结尾、下一行非编号/标题开头） */
+  /* 删除重复出现的同一标题（OCR 可能重复扫描） */
+  const allLines = t.split('\n')
+  const deduped = []
+  for (let i = 0; i < allLines.length; i++) {
+    const line = allLines[i].trim()
+    const prev = deduped.length > 0 ? deduped[deduped.length - 1].trim() : ''
+    /* 连续两行完全相同且长度<50 = 重复标题 */
+    if (line === prev && line.length < 50 && line.length > 0) continue
+    deduped.push(allLines[i])
+  }
+  t = deduped.join('\n')
+  /* 合并被错误断开的短行（<15字、不以句末标点结尾、下一行非编号/标题开头） */
   const lines = t.split('\n')
   const merged = []
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim()
     const next = (lines[i + 1] || '').trim()
-    if (line.length > 0 && line.length < 12 &&
+    if (line.length > 0 && line.length < 15 &&
         !/[。！？；\.\!\?：:》」』】）\)]$/.test(line) &&
         !/^[①②③④⑤⑥⑦⑧⑨⑩◆◇●○■□★☆·•▶▪►\-–—]/.test(next) &&
-        !/^(第|节|章|卷|单元|序言|前言|目录|附录)/.test(next) &&
+        !/^(第|节|章|卷|单元|序言|前言|目录|附录|总论|概论|导论|结语)/.test(next) &&
         !/^\d+[：:、.．]/.test(next) &&
+        !/^[一二三四五六七八九十]+[、.．：:]/.test(next) &&
         next.length > 0 && !/^\s*$/.test(next)) {
       merged.push(line + next)
       i++ /* 跳过下一行 */
@@ -291,18 +310,30 @@ function formatContent(text) {
       }
     }
 
-    /* 普通段落：超过 200 字自动拆分 */
-    /* 拆分策略：优先在转折词处拆、其次在句末标点处拆 */
-    if (trimmed.length > 200) {
+    /* 普通段落：超过 160 字自动拆分 */
+    /* 拆分策略：转折词/提问句/总结句处拆 > 句末标点处拆 */
+    if (trimmed.length > 160) {
       /* 先按句末标点拆分 */
       const sentences = trimmed.split(/(?<=[。！？；\.\!\?])\s*/)
       let current = ''
       for (const sentence of sentences) {
-        /* 检测转折词：即使未到 200 字，遇到明显转折也拆段 */
+        const sTrimmed = sentence.trim()
+        /* 检测转折词：遇到明显转折即拆段（需已积累 60 字以上） */
         const hasTransition = current.length > 60 &&
-          /^(但是|然而|因此|所以|换句话说|相反|不过|总之|综上|事实上|实际上|另外|此外|与此同时)/
-            .test(sentence.trim())
-        if ((current.length + sentence.length > 200 || hasTransition) && current.length > 0) {
+          /^(但是|然而|因此|所以|换句话说|相反|不过|总之|综上|事实上|实际上|另外|此外|与此同时|由此可见|可见|故此|既然如此)/
+            .test(sTrimmed)
+        /* 检测提问句：以问号结尾的句子后断段 */
+        const afterQuestion = current.length > 40 && /[？\?]$/.test(current.trim())
+        /* 检测总结句开头 */
+        const hasSummary = current.length > 60 &&
+          /^(总而言之|归根结底|简言之|一言以蔽之|最终|最后|结论是)/
+            .test(sTrimmed)
+        /* 检测经文引用后紧跟解释（经文与解释不混成同段） */
+        const afterScripture = current.length > 30 &&
+          /[」』"）\)]\s*$/.test(current.trim()) &&
+          !/^[「『"（\(]/.test(sTrimmed) &&
+          sTrimmed.length > 20
+        if ((current.length + sentence.length > 160 || hasTransition || afterQuestion || hasSummary || afterScripture) && current.length > 0) {
           allItems.push({ text: current.trim(), itemType: 'paragraph' })
           current = sentence
         } else {
@@ -601,8 +632,13 @@ function reAnalyzeSections(entries) {
       }
     }
 
-    /* === 一级标题（篇章级）：序言/前言/全景/总论/导论 === */
-    if (newType === 'body' && /^(序言|前言|引言|简介|概论|导论|绪论|概述|总论|结语|附录|跋|全景|preface|introduction|conclusion|epilogue)/i.test(title)) {
+    /* === 一级标题（篇章级）：序言/前言/全景/总论/导论/概要 === */
+    if (newType === 'body' && /^(序言|前言|引言|简介|概论|导论|绪论|概述|总论|总览|结语|附录|跋|全景|概要|全书概要|全书导读|preface|introduction|conclusion|epilogue|overview)/i.test(title)) {
+      newType = 'preface'
+    }
+    /* "XX福音全景""XX书总论"等书卷级标题也是一级 */
+    if (newType === 'body' && title.length <= 30 &&
+        /[\u4e00-\u9fff]{2,6}(全景|总论|概论|导论|总览|概述|简介)$/.test(title)) {
       newType = 'preface'
     }
 
@@ -1106,8 +1142,8 @@ onBeforeUnmount(() => {
             <template v-if="editingIndex !== idx">
               <!-- 智能模式 -->
               <template v-if="viewMode === 'smart'">
-                <!-- 章标题前加分隔线（非第一个） -->
-                <div v-if="sec.type === 'chapter_title' && idx > 0" class="chapter-divider"></div>
+                <!-- 章标题/序言/目录前加分隔线（非第一个） -->
+                <div v-if="(sec.type === 'chapter_title' || sec.type === 'preface' || sec.type === 'toc') && idx > 0" class="chapter-divider"></div>
 
                 <!-- 一级：文档标题（封面） -->
                 <div v-if="sec.type === 'document_title'" class="smart-doc-title">
@@ -1217,7 +1253,7 @@ onBeforeUnmount(() => {
                 :key="'smart-' + idx"
                 :class="['section-block', 'smart-block', 'smart-block-' + (sec.type || 'body')]"
               >
-                <div v-if="sec.type === 'chapter_title' && idx > 0" class="chapter-divider"></div>
+                <div v-if="(sec.type === 'chapter_title' || sec.type === 'preface' || sec.type === 'toc') && idx > 0" class="chapter-divider"></div>
                 <div v-if="sec.type === 'document_title'" class="smart-doc-title"><h1>{{ cleanTitle(sec.title) }}</h1></div>
                 <div v-else-if="sec.type === 'author'" class="smart-author">{{ cleanTitle(sec.title) }}</div>
                 <div v-else-if="sec.type === 'toc'" class="smart-toc">
