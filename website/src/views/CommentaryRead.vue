@@ -146,48 +146,55 @@ function normalizeEntries(data) {
 }
 
 /**
- * 将纯文本格式化为带换行和经文引用高亮的 HTML
+ * 转义 HTML 特殊字符
  */
-function formatContent(text) {
-  if (!text) return ''
-  /* 转义 HTML 特殊字符 */
-  let escaped = text
+function escapeHtml(str) {
+  return str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-
-  /* 高亮经文引用 */
-  const refs = findAllScriptureRefs(text)
-  if (refs.length > 0) {
-    /* 从后往前替换，避免位置偏移 */
-    const sortedRefs = [...refs].sort((a, b) => b.start - a.start)
-    for (const ref of sortedRefs) {
-      const originalPart = text.substring(ref.start, ref.end)
-      const escapedPart = originalPart
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-      escaped = escaped.replace(
-        escapedPart,
-        `<span class="verse-highlight">${escapedPart}</span>`
-      )
-    }
-  }
-
-  /* 换行转 <br> */
-  return escaped.replace(/\n/g, '<br>')
 }
 
 /**
- * 将纯文本格式化为 HTML（原文模式，不高亮经文引用）
+ * 智能模式：将纯文本格式化为精排 HTML
+ * - 按段落分割为 <p> 标签（双换行分段，单换行为 <br>）
+ * - 经文引用自动高亮
+ * - 首行缩进由 CSS 控制
+ */
+function formatContent(text) {
+  if (!text) return ''
+
+  /* 按双换行分成段落 */
+  const paragraphs = text.split(/\n\s*\n/)
+
+  return paragraphs.map(para => {
+    const trimmed = para.trim()
+    if (!trimmed) return ''
+    let escaped = escapeHtml(trimmed)
+
+    /* 高亮经文引用 */
+    const refs = findAllScriptureRefs(trimmed)
+    if (refs.length > 0) {
+      const sortedRefs = [...refs].sort((a, b) => b.start - a.start)
+      for (const r of sortedRefs) {
+        const original = trimmed.substring(r.start, r.end)
+        const esc = escapeHtml(original)
+        escaped = escaped.replace(esc, `<span class="verse-highlight">${esc}</span>`)
+      }
+    }
+
+    /* 段内换行转 <br> */
+    escaped = escaped.replace(/\n/g, '<br>')
+    return `<p class="smart-paragraph">${escaped}</p>`
+  }).filter(Boolean).join('')
+}
+
+/**
+ * 原文模式：纯文本 HTML（不高亮、不分段）
  */
 function formatPlainContent(text) {
   if (!text) return ''
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\n/g, '<br>')
+  return escapeHtml(text).replace(/\n/g, '<br>')
 }
 
 /** 解析 JSON */
@@ -228,6 +235,10 @@ function getTypeIcon(type) {
  * 当数据中所有段落都是 body 类型时，自动识别章标题、经文引用、序言等
  * 让智能模式能展现差异化排版
  */
+/**
+ * 智能重新分析段落类型
+ * 当数据中所有段落都是 body 类型时，自动识别章标题、经文引用、序言等
+ */
 function reAnalyzeSections(entries) {
   if (!entries || entries.length === 0) return entries
 
@@ -236,48 +247,63 @@ function reAnalyzeSections(entries) {
   if (!allBody) return entries
 
   let hasDocTitle = false
+  let hasAuthor = false
   return entries.map((entry, idx) => {
     const title = (entry.title || '').trim()
     const content = (entry.content || '').trim()
-    const fullText = title + ' ' + content
     let newType = 'body'
 
-    /* 文档标题：前2个条目中的短标题 */
-    if (!hasDocTitle && idx < 2 && title.length <= 40 && title.length > 0) {
+    /* 文档标题：前3个条目中的短标题（无正文内容或内容很少） */
+    if (!hasDocTitle && idx < 3 && title.length > 0 && title.length <= 50) {
       if (/[著编译撰整理]|作者|译者|编者|by\s/i.test(title)) {
         newType = 'author'
-      } else if (title.length <= 30 && !content) {
+        hasAuthor = true
+      } else if (!content || content.length < 20) {
         newType = 'document_title'
         hasDocTitle = true
       }
     }
 
-    /* 章标题：第X章 / Chapter X */
-    if (newType === 'body' && /^第[\s\d一二三四五六七八九十百零〇]+[章篇部]/.test(title)) {
-      newType = 'chapter_title'
-    } else if (newType === 'body' && /^(chapter|part)\s+\d+/i.test(title)) {
-      newType = 'chapter_title'
+    /* 作者：紧随文档标题之后的短行 */
+    if (newType === 'body' && !hasAuthor && idx < 5 && hasDocTitle &&
+        title.length > 0 && title.length <= 30 && (!content || content.length < 10)) {
+      if (/[著编译撰整理]|作者|译者|编者|by\s|——/i.test(title)) {
+        newType = 'author'
+        hasAuthor = true
+      }
     }
 
-    /* 序言/前言 */
-    if (newType === 'body' && /^(序言|前言|引言|简介|概论|导论|绪论|概述|preface|introduction)/i.test(title)) {
+    /* 章标题：第X章 / Chapter X / 全大写短标题 */
+    if (newType === 'body') {
+      if (/^第[\s\d一二三四五六七八九十百零〇]+[章篇部]/.test(title) ||
+          /^(chapter|part)\s+\d+/i.test(title) ||
+          /^卷[一二三四五六七八九十\d]+/.test(title) ||
+          (/^[A-Z\s]{5,}$/.test(title) && title.length <= 40)) {
+        newType = 'chapter_title'
+      }
+    }
+
+    /* 序言/前言/结语 */
+    if (newType === 'body' && /^(序言|前言|引言|简介|概论|导论|绪论|概述|总论|结语|附录|跋|preface|introduction|conclusion|epilogue)/i.test(title)) {
       newType = 'preface'
     }
 
     /* 小节标题：编号开头的短标题 */
-    if (newType === 'body' && title.length <= 30 && (
-      /^[一二三四五六七八九十]+[、.]/.test(title) ||
-      /^\d+[、.]/.test(title) ||
-      /^[（(]\s*\d+\s*[）)]/.test(title)
+    if (newType === 'body' && title.length > 0 && title.length <= 40 && (
+      /^[一二三四五六七八九十]+[、.．：:]/.test(title) ||
+      /^\d+[、.．：:]/.test(title) ||
+      /^[（(]\s*\d+\s*[）)]/.test(title) ||
+      /^[IVXLC]+[、.．]/.test(title)
     )) {
       newType = 'section_title'
     }
 
-    /* 经文引用开头 */
+    /* 经文引用开头（标题或内容首行） */
     if (newType === 'body') {
-      const checkText = title || content.split('\n')[0] || ''
+      const checkText = title || (content ? content.split('\n')[0] : '')
       if (/^\s*[\(（]?\s*[一二三\u4e00-\u9fff]{1,8}\s*\d{1,3}\s*[:：章篇]/.test(checkText) ||
-          /^\s*[\(（]?\s*[123]?\s*[A-Za-z]{2,15}\.?\s+\d{1,3}\s*:/.test(checkText)) {
+          /^\s*[\(（]?\s*[123]?\s*[A-Za-z]{2,15}\.?\s+\d{1,3}\s*:/.test(checkText) ||
+          /^\s*\d+:\d+/.test(checkText)) {
         newType = 'verse_ref'
       }
     }
@@ -453,17 +479,56 @@ onMounted(() => { loadDetail() })
             v-for="(sec, idx) in sections"
             :key="idx"
             :id="'section-' + idx"
-            class="section-block"
+            :class="[
+              'section-block',
+              viewMode === 'smart' ? 'smart-block smart-block-' + (sec.type || 'body') : 'plain-block'
+            ]"
           >
             <!-- 智能模式 -->
             <template v-if="viewMode === 'smart'">
-              <div v-if="sec.type && sec.type !== 'body'" class="content-type-tag" :class="'tag-' + sec.type">
-                {{ getTypeLabel(sec.type) }}
+              <!-- 章标题前加分隔线（非第一个） -->
+              <div v-if="sec.type === 'chapter_title' && idx > 0" class="chapter-divider"></div>
+
+              <!-- 文档标题 -->
+              <div v-if="sec.type === 'document_title'" class="smart-doc-title">
+                <h1>{{ sec.title }}</h1>
+                <div v-if="sec.content" class="smart-doc-subtitle" v-html="formatContent(sec.content)"></div>
               </div>
-              <h2 class="content-title" :class="'title-' + (sec.type || 'body')">
+
+              <!-- 作者 -->
+              <div v-else-if="sec.type === 'author'" class="smart-author">
                 {{ sec.title }}
-              </h2>
-              <div class="content-body" v-html="formatContent(sec.content)"></div>
+              </div>
+
+              <!-- 序言 -->
+              <div v-else-if="sec.type === 'preface'" class="smart-preface">
+                <div class="smart-preface-label">{{ sec.title }}</div>
+                <div class="smart-preface-body" v-html="formatContent(sec.content)"></div>
+              </div>
+
+              <!-- 章标题 -->
+              <div v-else-if="sec.type === 'chapter_title'" class="smart-chapter">
+                <h2>{{ sec.title }}</h2>
+                <div v-if="sec.content" class="smart-chapter-body" v-html="formatContent(sec.content)"></div>
+              </div>
+
+              <!-- 小节标题 -->
+              <div v-else-if="sec.type === 'section_title'" class="smart-section">
+                <h3>{{ sec.title }}</h3>
+                <div v-if="sec.content" class="smart-section-body" v-html="formatContent(sec.content)"></div>
+              </div>
+
+              <!-- 经文引用 -->
+              <div v-else-if="sec.type === 'verse_ref'" class="smart-verse">
+                <div class="smart-verse-ref">{{ sec.title }}</div>
+                <div v-if="sec.content" class="smart-verse-body" v-html="formatContent(sec.content)"></div>
+              </div>
+
+              <!-- 正文 -->
+              <div v-else class="smart-body">
+                <div v-if="sec.title" class="smart-body-title">{{ sec.title }}</div>
+                <div class="smart-body-content" v-html="formatContent(sec.content)"></div>
+              </div>
             </template>
 
             <!-- 原文模式 -->
@@ -498,15 +563,31 @@ onMounted(() => { loadDetail() })
               <div
                 v-for="(sec, idx) in sections"
                 :key="'smart-' + idx"
-                class="section-block"
+                :class="['section-block', 'smart-block', 'smart-block-' + (sec.type || 'body')]"
               >
-                <div v-if="sec.type && sec.type !== 'body'" class="content-type-tag" :class="'tag-' + sec.type">
-                  {{ getTypeLabel(sec.type) }}
+                <div v-if="sec.type === 'chapter_title' && idx > 0" class="chapter-divider"></div>
+                <div v-if="sec.type === 'document_title'" class="smart-doc-title"><h1>{{ sec.title }}</h1></div>
+                <div v-else-if="sec.type === 'author'" class="smart-author">{{ sec.title }}</div>
+                <div v-else-if="sec.type === 'preface'" class="smart-preface">
+                  <div class="smart-preface-label">{{ sec.title }}</div>
+                  <div class="smart-preface-body" v-html="formatContent(sec.content)"></div>
                 </div>
-                <h2 class="content-title" :class="'title-' + (sec.type || 'body')">
-                  {{ sec.title }}
-                </h2>
-                <div class="content-body" v-html="formatContent(sec.content)"></div>
+                <div v-else-if="sec.type === 'chapter_title'" class="smart-chapter">
+                  <h2>{{ sec.title }}</h2>
+                  <div v-if="sec.content" class="smart-chapter-body" v-html="formatContent(sec.content)"></div>
+                </div>
+                <div v-else-if="sec.type === 'section_title'" class="smart-section">
+                  <h3>{{ sec.title }}</h3>
+                  <div v-if="sec.content" class="smart-section-body" v-html="formatContent(sec.content)"></div>
+                </div>
+                <div v-else-if="sec.type === 'verse_ref'" class="smart-verse">
+                  <div class="smart-verse-ref">{{ sec.title }}</div>
+                  <div v-if="sec.content" class="smart-verse-body" v-html="formatContent(sec.content)"></div>
+                </div>
+                <div v-else class="smart-body">
+                  <div v-if="sec.title" class="smart-body-title">{{ sec.title }}</div>
+                  <div class="smart-body-content" v-html="formatContent(sec.content)"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -754,92 +835,23 @@ onMounted(() => { loadDetail() })
   width: 100%;
 }
 
-/* 段落块：连续排列 */
+/* ========== 段落块基础 ========== */
 .section-block {
-  margin-bottom: 32px;
   scroll-margin-top: 20px;
 }
+.section-block:last-child { margin-bottom: 80px; }
 
-.section-block:last-child {
-  margin-bottom: 80px;
+/* ========== 原文模式（plain） ========== */
+.plain-block {
+  margin-bottom: 24px;
 }
 
-/* 块类型标签 */
-.content-type-tag {
-  display: inline-block;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 3px;
-  margin-bottom: 10px;
-  color: #fff;
-}
-.tag-document_title { background: #5a8a6e; }
-.tag-author { background: #8a8178; }
-.tag-preface { background: #6b8da6; }
-.tag-chapter_title { background: #7a6b8a; }
-.tag-section_title { background: #8a7b6b; }
-.tag-verse_ref { background: #8b6914; }
-
-/* 标题样式：根据块类型差异化 */
-.content-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--church-charcoal, #3a3a3a);
-  margin: 0 0 12px 0;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--church-border, #e0d8cf);
-}
-
-.title-document_title {
-  font-size: 20px;
-  text-align: center;
-  border-bottom: none;
-  padding-bottom: 4px;
-}
-
-.title-author {
-  font-size: 14px;
-  font-weight: 400;
-  text-align: center;
-  color: var(--church-warm-gray, #8a8178);
-  border-bottom: none;
-}
-
-.title-chapter_title {
-  font-size: 18px;
-  color: #5a8a6e;
-}
-
-.title-verse_ref {
-  font-size: 15px;
-  color: #8b6914;
-  background: rgba(139,105,20,0.06);
-  padding: 8px 12px;
-  border-radius: 4px;
-  border-bottom: none;
-}
-
-.content-body {
-  font-size: 15px;
-  color: var(--church-charcoal, #3a3a3a);
-  line-height: 1.8;
-  word-break: break-word;
-}
-
-/* 经文引用高亮 */
-.content-body :deep(.verse-highlight) {
-  color: #8b6914;
-  font-weight: 500;
-  background: rgba(139,105,20,0.08);
-  padding: 1px 3px;
-  border-radius: 2px;
-}
-
-/* 原文模式样式 */
 .content-title-plain {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--church-charcoal, #3a3a3a);
+  margin: 0 0 8px 0;
+  padding-bottom: 6px;
   border-bottom: 1px solid var(--church-border, #e0d8cf);
 }
 
@@ -847,6 +859,169 @@ onMounted(() => { loadDetail() })
   font-size: 15px;
   color: var(--church-charcoal, #3a3a3a);
   line-height: 1.8;
+}
+
+/* ========== 智能模式（smart） ========== */
+.smart-block { margin-bottom: 8px; }
+.smart-block-document_title { margin-bottom: 4px; }
+.smart-block-author { margin-bottom: 24px; }
+.smart-block-chapter_title { margin-bottom: 16px; }
+.smart-block-preface { margin-bottom: 24px; }
+.smart-block-section_title { margin-bottom: 16px; }
+.smart-block-verse_ref { margin-bottom: 20px; }
+.smart-block-body { margin-bottom: 4px; }
+
+/* --- 章节分隔线 --- */
+.chapter-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--church-border, #d4cdc4), transparent);
+  margin: 40px 0 32px 0;
+}
+
+/* --- 文档标题 --- */
+.smart-doc-title {
+  text-align: center;
+  padding: 32px 0 8px 0;
+}
+.smart-doc-title h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--church-charcoal, #3a3a3a);
+  margin: 0;
+  letter-spacing: 2px;
+}
+.smart-doc-subtitle {
+  font-size: 14px;
+  color: var(--church-warm-gray, #8a8178);
+  margin-top: 8px;
+  line-height: 1.6;
+}
+
+/* --- 作者 --- */
+.smart-author {
+  text-align: center;
+  font-size: 14px;
+  color: var(--church-warm-gray, #8a8178);
+  font-style: italic;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--church-border, #e0d8cf);
+}
+
+/* --- 序言 --- */
+.smart-preface {
+  background: rgba(107,141,166,0.06);
+  border-left: 3px solid #6b8da6;
+  border-radius: 0 6px 6px 0;
+  padding: 16px 20px;
+}
+.smart-preface-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b8da6;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.smart-preface-body {
+  font-size: 14px;
+  color: #555;
+  line-height: 1.8;
+  font-style: italic;
+}
+
+/* --- 章标题 --- */
+.smart-chapter {
+  border-left: 4px solid #5a8a6e;
+  padding: 12px 0 12px 16px;
+}
+.smart-chapter h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #5a8a6e;
+  margin: 0;
+}
+.smart-chapter-body {
+  font-size: 14px;
+  color: var(--church-warm-gray, #8a8178);
+  margin-top: 6px;
+  line-height: 1.6;
+}
+
+/* --- 小节标题 --- */
+.smart-section {
+  padding: 8px 0 4px 0;
+}
+.smart-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--church-charcoal, #3a3a3a);
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--church-border, #e0d8cf);
+}
+.smart-section-body {
+  font-size: 15px;
+  color: var(--church-charcoal, #3a3a3a);
+  line-height: 1.8;
+  margin-top: 8px;
+}
+
+/* --- 经文引用 --- */
+.smart-verse {
+  background: rgba(139,105,20,0.04);
+  border-left: 3px solid #c4a035;
+  border-radius: 0 6px 6px 0;
+  padding: 12px 16px;
+}
+.smart-verse-ref {
+  font-size: 14px;
+  font-weight: 600;
+  color: #8b6914;
+  margin-bottom: 8px;
+}
+.smart-verse-body {
+  font-size: 15px;
+  color: var(--church-charcoal, #3a3a3a);
+  line-height: 1.8;
+}
+
+/* --- 正文 --- */
+.smart-body {
+  padding: 0;
+}
+.smart-body-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--church-charcoal, #3a3a3a);
+  margin-bottom: 4px;
+}
+.smart-body-content {
+  font-size: 15px;
+  color: var(--church-charcoal, #3a3a3a);
+  line-height: 1.9;
+}
+
+/* --- 智能段落（<p> 标签） --- */
+.smart-block :deep(.smart-paragraph) {
+  margin: 0 0 12px 0;
+  text-indent: 2em;
+}
+.smart-block :deep(.smart-paragraph:last-child) {
+  margin-bottom: 0;
+}
+/* 序言和经文引用内不缩进 */
+.smart-preface-body :deep(.smart-paragraph),
+.smart-verse-body :deep(.smart-paragraph) {
+  text-indent: 0;
+}
+
+/* --- 经文引用高亮（通用） --- */
+.smart-block :deep(.verse-highlight) {
+  color: #8b6914;
+  font-weight: 500;
+  background: rgba(139,105,20,0.1);
+  padding: 1px 4px;
+  border-radius: 2px;
 }
 
 /* 对比模式 */
