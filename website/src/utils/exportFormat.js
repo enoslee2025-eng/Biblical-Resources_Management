@@ -8,7 +8,7 @@
  *   - 词典（convertDictionaryToAppFormat）
  */
 
-import { BIBLE_VERSE_COUNTS } from './fileImport'
+import { BIBLE_VERSE_COUNTS, BIBLE_BOOK_NAMES, BOOK_CHAPTER_COUNTS, detectBookFromContent, detectScriptureRef } from './fileImport'
 
 /* ============================================================
  *  圣经标准书卷信息（66 卷）
@@ -393,12 +393,136 @@ function _buildPageIndex(catalogs, contentIndex) {
  * ============================================================ */
 
 /**
+ * 从标题文本中提取章号
+ * 支持格式：「第1章」「第一章」「Chapter 1」「创世记 1」「1章」等
+ *
+ * @private
+ * @param {string} title 标题文本
+ * @returns {number|null} 章号，无法识别返回 null
+ */
+function _extractChapterNum(title) {
+  if (!title) return null
+
+  /* 「第N章」或「第N篇」格式 */
+  const zhNum = title.match(/第\s*(\d+)\s*[章篇]/)
+  if (zhNum) return parseInt(zhNum[1])
+
+  /* 中文数字「第一章」「第十二章」 */
+  const zhCn = title.match(/第\s*([一二三四五六七八九十百零〇]+)\s*[章篇]/)
+  if (zhCn) {
+    const n = _zhNumToInt(zhCn[1])
+    if (n > 0) return n
+  }
+
+  /* 英文 Chapter N */
+  const enCh = title.match(/chapter\s+(\d+)/i)
+  if (enCh) return parseInt(enCh[1])
+
+  /* 「书卷名 N」或纯数字章 */
+  const numOnly = title.match(/(\d+)\s*[章]/)
+  if (numOnly) return parseInt(numOnly[1])
+
+  /* 标题末尾的独立数字（如 "创世记 3"） */
+  const trailingNum = title.match(/\s(\d{1,3})\s*$/)
+  if (trailingNum) return parseInt(trailingNum[1])
+
+  return null
+}
+
+/**
+ * 中文数字转阿拉伯数字（简单支持 1-150）
+ * @private
+ */
+function _zhNumToInt(zhStr) {
+  const map = { '零': 0, '〇': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 }
+  if (zhStr.length === 1) return map[zhStr] || 0
+  if (zhStr === '十') return 10
+
+  let result = 0
+  if (zhStr.startsWith('百')) {
+    result = 100
+    zhStr = zhStr.substring(1)
+  } else if (zhStr.length >= 2 && zhStr.includes('百')) {
+    const parts = zhStr.split('百')
+    result = (map[parts[0]] || 1) * 100
+    zhStr = parts[1] || ''
+  }
+
+  if (zhStr.startsWith('十')) {
+    result += 10 + (map[zhStr[1]] || 0)
+  } else if (zhStr.includes('十')) {
+    const parts = zhStr.split('十')
+    result += (map[parts[0]] || 1) * 10 + (map[parts[1]] || 0)
+  } else if (zhStr.length === 1) {
+    result += map[zhStr] || 0
+  }
+
+  return result
+}
+
+/**
+ * 从经文引用标题中提取经节号数组
+ * 支持格式：「1:1-5」「1:3,5,7」「创1:1」「3:16」等
+ *
+ * @private
+ * @param {string} title verse_ref 的标题
+ * @returns {number[]} 经节号数组
+ */
+function _extractVerseNums(title) {
+  if (!title) return []
+
+  /* 匹配 章:节 格式，提取节号部分 */
+  const refMatch = title.match(/(\d{1,3})\s*[:：]\s*([\d,\-–—\s]+)/)
+  if (!refMatch) return []
+
+  const versePart = refMatch[2]
+  const nums = []
+
+  /* 解析逗号分隔和范围（如 "1,3,5-7"） */
+  const parts = versePart.split(/[,，]/).map(s => s.trim()).filter(Boolean)
+  for (const part of parts) {
+    const rangeMatch = part.match(/^(\d+)\s*[-–—]\s*(\d+)$/)
+    if (rangeMatch) {
+      const start = parseInt(rangeMatch[1])
+      const end = parseInt(rangeMatch[2])
+      for (let i = start; i <= end && i <= 200; i++) {
+        nums.push(i)
+      }
+    } else {
+      const n = parseInt(part)
+      if (!isNaN(n)) nums.push(n)
+    }
+  }
+
+  return nums
+}
+
+/**
+ * 从经文引用标题中提取章号
+ * 用于当没有明确 chapter_title 时，从 verse_ref 推断当前章
+ *
+ * @private
+ * @param {string} title verse_ref 的标题
+ * @returns {number|null} 章号
+ */
+function _extractChapterFromRef(title) {
+  if (!title) return null
+  const m = title.match(/(\d{1,3})\s*[:：]/)
+  return m ? parseInt(m[1]) : null
+}
+
+/**
  * 将平台内部的注释数据转为主内圣经 APP 导入格式
  *
- * @param {Object} meta 元数据
- * @param {Array} entries 注释条目数组（内部格式）
- *   每个条目: { bookIndex, chapterIndex, verses: "1,2,3", content: "HTML", type: "direct"|"ref" }
- * @returns {Object} APP 兼容的 JSON 对象
+ * 支持两种输入格式：
+ * 1. 扁平条目数组（平台编辑器格式）: [{type, title, content}]
+ *    → 自动解析 chapter_title/verse_ref 提取书卷和章节信息
+ * 2. 结构化条目数组（旧格式）: [{bookIndex, chapterIndex, verses, content}]
+ *    → 直接使用字段映射
+ *
+ * @param {Object} meta 元数据 { title, abbr, iso, summary, ... }
+ * @param {Array} entries 注释条目数组
+ * @returns {Object} APP 兼容的注释 JSON 对象
  */
 export function convertCommentaryToAppFormat(meta, entries) {
   const result = {}
@@ -412,12 +536,138 @@ export function convertCommentaryToAppFormat(meta, entries) {
   result.summary = meta.summary || ''
   result.tips = meta.tips || ''
 
-  /* ---- 按章节分组 ---- */
   const contentMap = {}
   const linksMap = {}
   let linkCounter = 0
 
-  if (Array.isArray(entries)) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    result.content = contentMap
+    result.links = linksMap
+    result.style = meta.style || '<style>* { max-width:100%; }</style>'
+    result.script = meta.script || ''
+    result.linksTemplate = ''
+    return result
+  }
+
+  /* ---- 检测输入格式 ---- */
+  const isStructured = entries[0].bookIndex !== undefined || entries[0].chapterIndex !== undefined
+  const isFlat = entries[0].type !== undefined || (!isStructured && entries[0].title !== undefined)
+
+  if (isFlat) {
+    /* ============================================
+     *  扁平条目格式：从标题/类型中解析书卷和章节
+     * ============================================ */
+
+    /* 第一步：从文档标题或内容中检测书卷 */
+    let currentBookIndex = -1
+
+    /* 尝试从 document_title 或 meta.title 检测书卷 */
+    const docTitle = entries.find(e => e.type === 'document_title')
+    const titleText = docTitle?.title || meta.title || ''
+    const bookDetect = detectBookFromContent(titleText)
+    if (bookDetect) {
+      currentBookIndex = bookDetect.bookIndex
+    }
+
+    /* 如果标题检测失败，尝试从 chapter_title 或 verse_ref 中检测 */
+    if (currentBookIndex < 0) {
+      for (const entry of entries) {
+        if (entry.type === 'chapter_title' || entry.type === 'verse_ref') {
+          const detect = detectBookFromContent(entry.title || '')
+          if (detect) {
+            currentBookIndex = detect.bookIndex
+            break
+          }
+        }
+      }
+    }
+
+    /* 兜底：默认为创世记 */
+    if (currentBookIndex < 0) currentBookIndex = 0
+    let currentBookNum = currentBookIndex + 1
+    let currentChapter = 0
+
+    /* 第二步：遍历条目，按章节分组 */
+    for (const entry of entries) {
+      const type = entry.type || 'body'
+
+      /* 跳过纯结构信息（文档标题、作者、目录） */
+      if (type === 'document_title' || type === 'author' || type === 'toc') continue
+
+      /* chapter_title：切换章节 */
+      if (type === 'chapter_title') {
+        const chNum = _extractChapterNum(entry.title)
+        if (chNum !== null) {
+          currentChapter = chNum
+        } else {
+          currentChapter++
+        }
+
+        /* 检测是否切换到新书卷 */
+        const bookDetect = detectBookFromContent(entry.title || '')
+        if (bookDetect && bookDetect.bookIndex !== currentBookIndex) {
+          currentBookIndex = bookDetect.bookIndex
+          currentBookNum = currentBookIndex + 1
+        }
+        continue
+      }
+
+      /* verse_ref：提取经节号，可能也包含章号信息 */
+      if (type === 'verse_ref') {
+        const refChapter = _extractChapterFromRef(entry.title)
+        if (refChapter !== null && refChapter !== currentChapter) {
+          currentChapter = refChapter
+        }
+
+        const verseNums = _extractVerseNums(entry.title)
+        const verseStr = verseNums.map(n => `#${n};`).join('')
+        const key = `b${currentBookNum}c${currentChapter}`
+        if (!contentMap[key]) contentMap[key] = []
+
+        contentMap[key].push({
+          v: verseStr,
+          r: 0,
+          c: entry.content || '',
+          ls: []
+        })
+        continue
+      }
+
+      /* preface：放入简介章 b{n}c0 */
+      if (type === 'preface') {
+        const key = `b${currentBookNum}c0`
+        if (!contentMap[key]) contentMap[key] = []
+        contentMap[key].push({
+          v: '',
+          r: 0,
+          c: entry.content || '',
+          ls: []
+        })
+        continue
+      }
+
+      /* body / section_title / unit_title / numbered_note / scripture_block */
+      /* 归入当前章节 */
+      const key = `b${currentBookNum}c${currentChapter}`
+      if (!contentMap[key]) contentMap[key] = []
+
+      /* section_title 和 unit_title 内容作为 HTML 标题包装 */
+      let htmlContent = entry.content || ''
+      if ((type === 'section_title' || type === 'unit_title') && entry.title) {
+        htmlContent = `<h3>${entry.title}</h3>${htmlContent}`
+      }
+
+      contentMap[key].push({
+        v: '',
+        r: 0,
+        c: htmlContent,
+        ls: []
+      })
+    }
+  } else {
+    /* ============================================
+     *  结构化条目格式：直接使用 bookIndex/chapterIndex
+     * ============================================ */
     for (const entry of entries) {
       const bookNum = (entry.bookIndex || 0) + 1
       const chapterNum = entry.chapterIndex || 0
