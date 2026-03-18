@@ -955,6 +955,7 @@ onBeforeUnmount(() => {
           ref="scrollContainer"
           class="read-content"
           @scroll="onContentScroll"
+          @click.self="cancelEdit"
         >
           <div
             v-for="(sec, idx) in sections"
@@ -963,21 +964,11 @@ onBeforeUnmount(() => {
             :class="[
               'section-block',
               'section-editable',
-              viewMode === 'smart' ? 'smart-block smart-block-' + (sec.type || 'body') : 'plain-block'
+              viewMode === 'smart' ? 'smart-block smart-block-' + (sec.type || 'body') : 'plain-block',
+              { 'section-editing': editingIndex === idx }
             ]"
+            @click.stop="editingIndex !== idx && startEdit(idx)"
           >
-            <!-- 编辑按钮（悬浮显示） -->
-            <button
-              v-if="editingIndex !== idx"
-              class="inline-edit-btn"
-              @click.stop="startEdit(idx)"
-              :aria-label="t('inline_edit')"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
-              </svg>
-              {{ t('inline_edit') }}
-            </button>
 
             <!-- 内联编辑器 -->
             <div v-if="editingIndex === idx" class="inline-editor-wrap">
@@ -1756,35 +1747,22 @@ onBeforeUnmount(() => {
 
 /* ========== 段落内联编辑 ========== */
 
-/* 编辑按钮：悬浮在段落右上角 */
+/* 可编辑段落：点击进入编辑 */
 .section-editable {
   position: relative;
-}
-.inline-edit-btn {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  display: none;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  padding: 3px 8px;
-  border: 1px solid #d0d3d9;
-  border-radius: 4px;
-  background: #fff;
-  color: #666;
   cursor: pointer;
-  z-index: 5;
-  transition: all 0.15s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  border-radius: 6px;
+  transition: background 0.15s, box-shadow 0.15s;
 }
-.section-editable:hover .inline-edit-btn {
-  display: inline-flex;
+.section-editable:hover {
+  background: rgba(90, 138, 110, 0.04);
+  box-shadow: 0 0 0 2px rgba(90, 138, 110, 0.12);
 }
-.inline-edit-btn:hover {
-  background: #5a8a6e;
-  color: #fff;
-  border-color: #5a8a6e;
+/* 编辑中的段落不显示 hover 样式 */
+.section-editing {
+  cursor: default;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 /* 编辑器容器 */
