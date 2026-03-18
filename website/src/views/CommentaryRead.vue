@@ -373,6 +373,9 @@ function formatContent(text) {
 
     escaped = escaped.replace(/\n/g, '<br>')
 
+    /* 标注圣经人名和地名 */
+    escaped = highlightBibleNames(escaped)
+
     if (item.itemType === 'numbered') {
       /* 编号注释段：编号符号高亮，不缩进 */
       escaped = escaped.replace(/([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])/g,
@@ -387,6 +390,86 @@ function formatContent(text) {
 
     return `<p class="smart-paragraph">${escaped}</p>`
   }).filter(Boolean).join('')
+}
+
+/**
+ * 圣经人名词典（常见中文译名）
+ * 用于智能排版时自动标注人名
+ */
+const BIBLE_PERSONS = [
+  /* 旧约核心人物 */
+  '亚当', '夏娃', '亚伯', '该隐', '挪亚', '亚伯拉罕', '亚伯兰', '撒拉', '撒莱',
+  '以撒', '利百加', '雅各', '以扫', '约瑟', '便雅悯', '犹大', '流便', '西缅',
+  '利未', '但', '拿弗他利', '迦得', '亚设', '以萨迦', '西布伦',
+  '摩西', '亚伦', '米利暗', '约书亚', '迦勒', '基甸', '参孙', '底波拉', '路得',
+  '波阿斯', '撒母耳', '扫罗', '大卫', '所罗门', '以利亚', '以利沙',
+  '以赛亚', '耶利米', '以西结', '但以理', '何西阿', '约珥', '阿摩司',
+  '俄巴底亚', '约拿', '弥迦', '那鸿', '哈巴谷', '西番雅', '哈该', '撒迦利亚', '玛拉基',
+  '约伯', '尼希米', '以斯拉', '以斯帖', '末底改',
+  /* 新约核心人物 */
+  '耶稣', '基督', '马利亚', '约瑟', '施洗约翰', '约翰',
+  '彼得', '西门', '安得烈', '雅各', '腓力', '巴多罗买', '多马',
+  '马太', '达太', '西庇太', '犹大', '马提亚',
+  '保罗', '扫罗', '巴拿巴', '西拉', '提摩太', '提多', '路加', '马可',
+  '司提反', '腓利', '亚居拉', '百基拉', '阿波罗',
+  '彼拉多', '希律', '该亚法', '尼哥底母', '拉撒路', '马大', '撒该',
+  /* 其他常见称呼 */
+  '主耶稣', '耶和华', '以马内利'
+]
+
+/**
+ * 圣经地名词典（常见中文译名）
+ * 用于智能排版时自动标注地名
+ */
+const BIBLE_PLACES = [
+  /* 重要城市 */
+  '耶路撒冷', '伯利恒', '拿撒勒', '迦百农', '撒玛利亚', '耶利哥',
+  '安提阿', '大马士革', '哥林多', '以弗所', '腓立比', '帖撒罗尼迦',
+  '雅典', '罗马', '推罗', '西顿', '该撒利亚', '迦拿',
+  /* 地区 */
+  '加利利', '犹太', '犹大', '伯大尼', '客西马尼', '各各他', '髑髅地',
+  '约旦河', '死海', '红海', '地中海', '加利利海', '提比利亚海',
+  '西奈山', '何烈山', '橄榄山', '锡安山', '迦密山', '他泊山', '黑门山',
+  '埃及', '巴比伦', '波斯', '亚述', '迦南', '非利士',
+  '以色列', '犹大国', '北国', '南国',
+  '伊甸园', '示剑', '希伯仑', '别是巴', '但', '基列', '巴珊',
+  '伯特利', '示罗', '吉甲', '米斯巴',
+  /* 新约地区 */
+  '马其顿', '亚该亚', '加拉太', '庇推尼', '本都',
+  '拔摩', '老底嘉', '别迦摩', '推雅推喇', '撒狄', '非拉铁非', '士每拿'
+]
+
+/**
+ * 在已转义的 HTML 中标注圣经人名和地名
+ * 人名用深棕色加粗，地名用深蓝色下划点线
+ */
+function highlightBibleNames(html) {
+  /* 按长度降序排列，避免短名误匹配长名的一部分 */
+  const sortedPersons = [...BIBLE_PERSONS].sort((a, b) => b.length - a.length)
+  const sortedPlaces = [...BIBLE_PLACES].sort((a, b) => b.length - a.length)
+
+  /* 先标注人名（避免与已标注的 HTML 标签冲突，用占位符） */
+  let result = html
+  for (const name of sortedPersons) {
+    const regex = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
+    result = result.replace(regex, (match, offset) => {
+      /* 检查是否已在 HTML 标签内（span 等） */
+      const before = result.substring(Math.max(0, offset - 50), offset)
+      if (/<[^>]*$/.test(before)) return match
+      return `<span class="bible-person">${match}</span>`
+    })
+  }
+  for (const name of sortedPlaces) {
+    const regex = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
+    result = result.replace(regex, (match, offset) => {
+      const before = result.substring(Math.max(0, offset - 50), offset)
+      if (/<[^>]*$/.test(before)) return match
+      /* 检查是否已在人名标注内 */
+      if (/bible-person">([^<]*)$/.test(before)) return match
+      return `<span class="bible-place">${match}</span>`
+    })
+  }
+  return result
 }
 
 /**
@@ -1621,9 +1704,12 @@ onBeforeUnmount(() => {
 
 /* --- 字体族变量 --- */
 .smart-block {
-  --smart-font-heading: "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif;
-  --smart-font-body: "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", "STSong", serif;
+  --smart-font-heading: "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --smart-font-body: "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   --smart-font-scripture: "KaiTi", "STKaiti", "FangSong", serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 /* --- 块间距（留白节奏：标题前大 > 标题后中 > 段落后小） --- */
@@ -1735,9 +1821,9 @@ onBeforeUnmount(() => {
 }
 .smart-preface-body {
   font-family: var(--smart-font-body);
-  font-size: 14px;
-  color: #222222;
-  line-height: 1.65;
+  font-size: 15px;
+  color: #1a1a1a;
+  line-height: 1.75;
 }
 
 /* --- 二级：章标题 --- */
@@ -1746,11 +1832,13 @@ onBeforeUnmount(() => {
 }
 .smart-chapter h2 {
   font-family: var(--smart-font-heading);
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
-  color: #1F1F1F;
+  color: #1a1a1a;
   margin: 0;
   line-height: 1.4;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #d4cdc4;
 }
 .smart-chapter-body {
   font-family: var(--smart-font-body);
@@ -1766,7 +1854,7 @@ onBeforeUnmount(() => {
 }
 .smart-unit h3 {
   font-family: var(--smart-font-heading);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   color: #2C3E50;
   margin: 0;
@@ -1774,9 +1862,9 @@ onBeforeUnmount(() => {
 }
 .smart-unit-body {
   font-family: var(--smart-font-body);
-  font-size: 14px;
-  color: #222222;
-  line-height: 1.65;
+  font-size: 15px;
+  color: #1a1a1a;
+  line-height: 1.75;
   margin-top: 8px;
 }
 
@@ -1786,17 +1874,19 @@ onBeforeUnmount(() => {
 }
 .smart-section h4 {
   font-family: var(--smart-font-heading);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   color: #34495E;
   margin: 0;
   line-height: 1.4;
+  padding-left: 10px;
+  border-left: 3px solid #34495E;
 }
 .smart-section-body {
   font-family: var(--smart-font-body);
-  font-size: 14px;
-  color: #222222;
-  line-height: 1.65;
+  font-size: 15px;
+  color: #1a1a1a;
+  line-height: 1.75;
   margin-top: 5px;
 }
 
@@ -1813,9 +1903,9 @@ onBeforeUnmount(() => {
 }
 .smart-verse-body {
   font-family: var(--smart-font-body);
-  font-size: 14px;
-  color: #222222;
-  line-height: 1.65;
+  font-size: 15px;
+  color: #1a1a1a;
+  line-height: 1.75;
 }
 
 /* --- 多行经文引用块（独立排版，有视觉区隔） --- */
@@ -1872,9 +1962,9 @@ onBeforeUnmount(() => {
 }
 .smart-body-content {
   font-family: var(--smart-font-body);
-  font-size: 14px;
-  color: #222222;
-  line-height: 1.65;
+  font-size: 15px;
+  color: #1a1a1a;
+  line-height: 1.75;
 }
 
 /* --- 段落排版规则 --- */
@@ -1914,6 +2004,17 @@ onBeforeUnmount(() => {
 .smart-block :deep(.verse-highlight) {
   color: #6B5B53;
   font-weight: 500;
+}
+/* --- 圣经人名标注（深棕色加粗） --- */
+.smart-block :deep(.bible-person) {
+  color: #5D4037;
+  font-weight: 600;
+}
+/* --- 圣经地名标注（深蓝色、下划点线） --- */
+.smart-block :deep(.bible-place) {
+  color: #1565C0;
+  text-decoration: underline dotted #90CAF9;
+  text-underline-offset: 3px;
 }
 
 /* ========== 段落内联编辑 ========== */
