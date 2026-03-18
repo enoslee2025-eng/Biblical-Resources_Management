@@ -305,36 +305,46 @@ function isTocLikeEntry(entry) {
   const content = (entry.content || '').trim()
   const title = rawTitle.replace(/^[◆◇●○■□★☆·•▶▪►\-–—\s]+/, '').trim()
 
-  /* 有大量正文内容的不是目录项 */
-  if (content.length > 50) return false
   /* 无标题的不是目录项 */
   if (!title) return false
   /* 标题太长的不是目录项 */
   if (title.length > 60) return false
 
-  /* 章标题格式 */
-  if (/^第[\s\d一二三四五六七八九十百零〇]+[章篇部]/.test(title) ||
-      /^\d+\s*章/.test(title) ||
-      /^(chapter|part)\s+\d+/i.test(title) ||
-      /^卷[一二三四五六七八九十\d]+/.test(title)) return true
+  /**
+   * 判断标题本身是否为目录格式
+   * 如果标题明确匹配目录模式，即使有较长内容也视为目录项
+   * 只有当内容是真正的长段落文字时才排除
+   */
+  const isTocTitle =
+    /* ◆ 开头的装饰性条目 */
+    /^[◆◇●○■□★☆·•▶▪►]/.test(rawTitle) ||
+    /* 章标题格式 */
+    /^第[\s\d一二三四五六七八九十百零〇]+[章篇部]/.test(title) ||
+    /^\d+\s*章/.test(title) ||
+    /^(chapter|part)\s+\d+/i.test(title) ||
+    /^卷[一二三四五六七八九十\d]+/.test(title) ||
+    /* 经文引用格式 */
+    /^\d+\s*[：:]\s*\d+/.test(title) ||
+    /* 节标题 */
+    /^节\s+/.test(title) ||
+    /* 序言/前言等 */
+    /^(序言|前言|引言|简介|概论|导论|绪论|概述|总论|结语|附录|全景)/i.test(title) ||
+    /* 编号开头的短条目 */
+    /^[一二三四五六七八九十]+[、.．：:]/.test(title) ||
+    /^\d+[、.．]\s*\S/.test(title)
 
-  /* 经文引用格式 */
-  if (/^\d+\s*[：:]\s*\d+/.test(title)) return true
+  if (!isTocTitle) return false
 
-  /* 节标题 */
-  if (/^节\s+/.test(title)) return true
+  /* 标题匹配目录格式后，检查内容是否为真正的长段落正文 */
+  /* 如果内容是多行短文（其他目录项）或较短文字，仍视为目录项 */
+  if (content.length > 200) {
+    /* 检查是否为连续长段落（非多行短条目） */
+    const lines = content.split('\n').filter(l => l.trim())
+    const avgLineLen = content.length / Math.max(1, lines.length)
+    if (avgLineLen > 80) return false /* 每行平均超过80字=真正的正文 */
+  }
 
-  /* 序言/前言等 */
-  if (/^(序言|前言|引言|简介|概论|导论|绪论|概述|总论|结语|附录|全景)/i.test(title)) return true
-
-  /* ◆ 开头的装饰性条目 */
-  if (/^[◆◇●○■□★☆·•▶▪►]/.test(rawTitle)) return true
-
-  /* 编号开头的短条目 */
-  if (/^[一二三四五六七八九十]+[、.．：:]/.test(title) ||
-      /^\d+[、.．]\s*\S/.test(title)) return true
-
-  return false
+  return true
 }
 
 function reAnalyzeSections(entries) {
