@@ -129,15 +129,25 @@ const navItems = computed(() => {
     /* toc 类型本身不作为导航项 */
     if (sec.type === 'toc') continue
 
-    /* 只有文档结构类型才作为导航项 */
+    /* 结构类型（标题类）始终作为导航项 */
     if (navTypes.includes(sec.type)) {
       items.push({
         sectionIndex: i,
         label: cleanTitle(sec.title) || getTypeLabel(sec.type),
         type: sec.type
       })
+    } else if (sec.title && sec.title.trim()) {
+      /* 非标题类型但有小标题的段落，也作为导航项（以文档小标题划分） */
+      const trimmed = sec.title.trim()
+      /* 过滤掉过长的标题（可能是正文误标）和纯数字标题 */
+      if (trimmed.length <= 50 && !/^\d+$/.test(trimmed)) {
+        items.push({
+          sectionIndex: i,
+          label: cleanTitle(trimmed),
+          type: sec.type || 'body'
+        })
+      }
     }
-    /* 经文引用、编号注释、正文等内容块不出现在目录中 */
   }
 
   /* 如果过滤后目录为空（没有识别出任何标题），按固定间隔生成导航点 */
