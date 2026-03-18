@@ -6,12 +6,17 @@
  * 支持块类型识别、经文引用高亮、三种查看模式
  * 支持从阅读页直接编辑
  */
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { getResourceDetail } from '@/api/resource'
+import { getResourceDetail, updateResource } from '@/api/resource'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { parseCommentaryText, findAllScriptureRefs, detectScriptureRef } from '@/utils/fileImport'
+import { Editor, EditorContent } from '@tiptap/vue-3'
+import StarterKit from '@tiptap/starter-kit'
+import Underline from '@tiptap/extension-underline'
+import TextAlign from '@tiptap/extension-text-align'
+import Highlight from '@tiptap/extension-highlight'
 
 const route = useRoute()
 const router = useRouter()
@@ -770,7 +775,120 @@ function goEdit() {
   router.push(`/commentary/edit/${resourceId}`)
 }
 
+/* ====== 段落内联编辑 ====== */
+
+/** 当前正在编辑的段落索引（-1 表示未编辑） */
+const editingIndex = ref(-1)
+
+/** 编辑器保存中 */
+const editSaving = ref(false)
+
+/** 编辑器内容（标题+正文） */
+const editTitle = ref('')
+const editContent = ref('')
+
+/** Tiptap 编辑器实例（直接使用 Editor 类） */
+const inlineEditor = ref(null)
+
+/** 开始编辑某个段落 */
+function startEdit(idx) {
+  /* 先销毁旧编辑器 */
+  if (inlineEditor.value) {
+    inlineEditor.value.destroy()
+    inlineEditor.value = null
+  }
+
+  const sec = sections.value[idx]
+  editingIndex.value = idx
+  editTitle.value = sec.title || ''
+
+  /* 将纯文本转为简单 HTML 供编辑器使用 */
+  const htmlContent = (sec.content || '').split('\n').filter(l => l.trim()).map(l => `<p>${escapeHtml(l)}</p>`).join('')
+  editContent.value = htmlContent
+
+  nextTick(() => {
+    inlineEditor.value = new Editor({
+      content: htmlContent,
+      extensions: [
+        StarterKit,
+        Underline,
+        Highlight.configure({ multicolor: true }),
+        TextAlign.configure({ types: ['heading', 'paragraph'] })
+      ]
+    })
+  })
+}
+
+/** 取消编辑 */
+function cancelEdit() {
+  editingIndex.value = -1
+  editTitle.value = ''
+  editContent.value = ''
+  if (inlineEditor.value) {
+    inlineEditor.value.destroy()
+    inlineEditor.value = null
+  }
+}
+
+/** 从编辑器 HTML 提取纯文本（去除 HTML 标签，保留换行） */
+function htmlToPlainText(html) {
+  if (!html) return ''
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>\s*<p[^>]*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .trim()
+}
+
+/** 保存段落编辑 */
+async function saveEdit() {
+  if (editingIndex.value < 0) return
+  editSaving.value = true
+
+  try {
+    const idx = editingIndex.value
+    /* 从编辑器获取最新 HTML 并转为纯文本 */
+    const editorHtml = inlineEditor.value?.getHTML() || ''
+    const plainContent = htmlToPlainText(editorHtml)
+
+    /* 更新本地 sections 数据 */
+    const updatedSections = [...sections.value]
+    updatedSections[idx] = {
+      ...updatedSections[idx],
+      title: editTitle.value,
+      content: plainContent
+    }
+    sections.value = updatedSections
+
+    /* 构造完整 contentJson 保存到后端 */
+    const contentJson = JSON.stringify(updatedSections.map(s => ({
+      type: s.type || 'body',
+      title: s.title || '',
+      content: s.content || ''
+    })))
+
+    await updateResource(resourceId, { contentJson })
+
+    /* 关闭编辑器 */
+    cancelEdit()
+  } catch (e) {
+    console.error('保存段落失败:', e)
+  } finally {
+    editSaving.value = false
+  }
+}
+
 onMounted(() => { loadDetail() })
+
+onBeforeUnmount(() => {
+  if (inlineEditor.value) {
+    inlineEditor.value.destroy()
+  }
+})
 </script>
 
 <template>
@@ -863,91 +981,168 @@ onMounted(() => { loadDetail() })
             :id="'section-' + idx"
             :class="[
               'section-block',
+              'section-editable',
               viewMode === 'smart' ? 'smart-block smart-block-' + (sec.type || 'body') : 'plain-block'
             ]"
           >
-            <!-- 智能模式 -->
-            <template v-if="viewMode === 'smart'">
-              <!-- 章标题前加分隔线（非第一个） -->
-              <div v-if="sec.type === 'chapter_title' && idx > 0" class="chapter-divider"></div>
+            <!-- 编辑按钮（悬浮显示） -->
+            <button
+              v-if="editingIndex !== idx"
+              class="inline-edit-btn"
+              @click.stop="startEdit(idx)"
+              :aria-label="t('inline_edit')"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+              </svg>
+              {{ t('inline_edit') }}
+            </button>
 
-              <!-- 一级：文档标题（封面） -->
-              <div v-if="sec.type === 'document_title'" class="smart-doc-title">
-                <h1>{{ cleanTitle(sec.title) }}</h1>
-                <div v-if="sec.content" class="smart-doc-subtitle" v-html="formatContent(sec.content)"></div>
+            <!-- 内联编辑器 -->
+            <div v-if="editingIndex === idx" class="inline-editor-wrap">
+              <!-- 标题编辑 -->
+              <div class="inline-editor-title-row">
+                <label class="inline-editor-label">{{ t('inline_edit_title') }}</label>
+                <input
+                  v-model="editTitle"
+                  class="inline-editor-title-input"
+                  :placeholder="t('inline_edit_title')"
+                  :aria-label="t('inline_edit_title')"
+                />
               </div>
 
-              <!-- 作者 -->
-              <div v-else-if="sec.type === 'author'" class="smart-author">
-                {{ cleanTitle(sec.title) }}
+              <!-- 富文本工具栏 -->
+              <div v-if="inlineEditor" class="inline-toolbar">
+                <button class="it-btn" :class="{ 'it-active': inlineEditor.isActive('bold') }" @click="inlineEditor.chain().focus().toggleBold().run()" :title="t('inline_bold')"><b>B</b></button>
+                <button class="it-btn" :class="{ 'it-active': inlineEditor.isActive('italic') }" @click="inlineEditor.chain().focus().toggleItalic().run()" :title="t('inline_italic')"><i>I</i></button>
+                <button class="it-btn" :class="{ 'it-active': inlineEditor.isActive('underline') }" @click="inlineEditor.chain().focus().toggleUnderline().run()" :title="t('inline_underline')"><u>U</u></button>
+                <button class="it-btn" :class="{ 'it-active': inlineEditor.isActive('strike') }" @click="inlineEditor.chain().focus().toggleStrike().run()" :title="t('inline_strike')"><s>S</s></button>
+                <div class="it-sep"></div>
+                <button class="it-btn" :class="{ 'it-active': inlineEditor.isActive('heading', { level: 2 }) }" @click="inlineEditor.chain().focus().toggleHeading({ level: 2 }).run()" title="H2">H2</button>
+                <button class="it-btn" :class="{ 'it-active': inlineEditor.isActive('heading', { level: 3 }) }" @click="inlineEditor.chain().focus().toggleHeading({ level: 3 }).run()" title="H3">H3</button>
+                <button class="it-btn" :class="{ 'it-active': inlineEditor.isActive('heading', { level: 4 }) }" @click="inlineEditor.chain().focus().toggleHeading({ level: 4 }).run()" title="H4">H4</button>
+                <div class="it-sep"></div>
+                <button class="it-btn" :class="{ 'it-active': inlineEditor.isActive('bulletList') }" @click="inlineEditor.chain().focus().toggleBulletList().run()" :title="t('inline_bullet_list')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M4 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm0-6c-.83 0-1.5.67-1.5 1.5S3.17 7.5 4 7.5 5.5 6.83 5.5 6 4.83 4.5 4 4.5zm0 12c-.83 0-1.5.68-1.5 1.5s.68 1.5 1.5 1.5 1.5-.68 1.5-1.5-.67-1.5-1.5-1.5zM7 19h14v-2H7v2zm0-6h14v-2H7v2zm0-8v2h14V5H7z"/></svg>
+                </button>
+                <button class="it-btn" :class="{ 'it-active': inlineEditor.isActive('orderedList') }" @click="inlineEditor.chain().focus().toggleOrderedList().run()" :title="t('inline_ordered_list')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 17h2v.5H3v1h1v.5H2v1h3v-4H2v1zm1-9h1V4H2v1h1v3zm-1 3h1.8L2 13.1v.9h3v-1H3.2L5 10.9V10H2v1zm5-6v2h14V5H7zm0 14h14v-2H7v2zm0-6h14v-2H7v2z"/></svg>
+                </button>
+                <div class="it-sep"></div>
+                <button class="it-btn" :class="{ 'it-active': inlineEditor.isActive('blockquote') }" @click="inlineEditor.chain().focus().toggleBlockquote().run()" :title="t('inline_blockquote')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/></svg>
+                </button>
+                <button class="it-btn" :class="{ 'it-active': inlineEditor.isActive('highlight') }" @click="inlineEditor.chain().focus().toggleHighlight().run()" :title="t('inline_highlight')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-1 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8z"/></svg>
+                </button>
+                <div class="it-sep"></div>
+                <button class="it-btn" @click="inlineEditor.chain().focus().undo().run()" :disabled="!inlineEditor.can().undo()" :title="t('rte_undo')">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
+                </button>
+                <button class="it-btn" @click="inlineEditor.chain().focus().redo().run()" :disabled="!inlineEditor.can().redo()" :title="t('rte_redo')">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg>
+                </button>
               </div>
 
-              <!-- 目录（重建为规范结构，不照抄原断行） -->
-              <div v-else-if="sec.type === 'toc'" class="smart-toc">
-                <div class="smart-toc-label">{{ cleanTitle(sec.title) }}</div>
-                <ul class="smart-toc-list">
-                  <li
-                    v-for="(item, lIdx) in rebuildTocContent(sec.content)"
-                    :key="lIdx"
-                    class="smart-toc-item"
-                    :class="'toc-level-' + item.level"
-                  >{{ item.text }}</li>
-                </ul>
-              </div>
+              <!-- 编辑器内容区 -->
+              <editor-content v-if="inlineEditor" :editor="inlineEditor" class="inline-editor-content" />
 
-              <!-- 一级：序言/前言/全景/总论（篇章级） -->
-              <div v-else-if="sec.type === 'preface'" class="smart-preface">
-                <div class="smart-preface-label">{{ cleanTitle(sec.title) }}</div>
-                <div class="smart-preface-body" v-html="formatContent(sec.content)"></div>
+              <!-- 操作按钮 -->
+              <div class="inline-editor-actions">
+                <button class="inline-save-btn" @click="saveEdit" :disabled="editSaving" :aria-busy="editSaving">
+                  {{ editSaving ? t('inline_saving') : t('save') }}
+                </button>
+                <button class="inline-cancel-btn" @click="cancelEdit" :disabled="editSaving">
+                  {{ t('cancel') }}
+                </button>
               </div>
+            </div>
 
-              <!-- 二级：章标题 -->
-              <div v-else-if="sec.type === 'chapter_title'" class="smart-chapter">
-                <h2>{{ cleanTitle(sec.title) }}</h2>
-                <div v-if="sec.content" class="smart-chapter-body" v-html="formatContent(sec.content)"></div>
-              </div>
+            <!-- 非编辑状态：正常显示内容 -->
+            <template v-if="editingIndex !== idx">
+              <!-- 智能模式 -->
+              <template v-if="viewMode === 'smart'">
+                <!-- 章标题前加分隔线（非第一个） -->
+                <div v-if="sec.type === 'chapter_title' && idx > 0" class="chapter-divider"></div>
 
-              <!-- 三级：章内单元标题 -->
-              <div v-else-if="sec.type === 'unit_title'" class="smart-unit">
-                <h3>{{ cleanTitle(sec.title) }}</h3>
-                <div v-if="sec.content" class="smart-unit-body" v-html="formatContent(sec.content)"></div>
-              </div>
+                <!-- 一级：文档标题（封面） -->
+                <div v-if="sec.type === 'document_title'" class="smart-doc-title">
+                  <h1>{{ cleanTitle(sec.title) }}</h1>
+                  <div v-if="sec.content" class="smart-doc-subtitle" v-html="formatContent(sec.content)"></div>
+                </div>
 
-              <!-- 四级：主题小节标题 -->
-              <div v-else-if="sec.type === 'section_title'" class="smart-section">
-                <h4>{{ cleanTitle(sec.title) }}</h4>
-                <div v-if="sec.content" class="smart-section-body" v-html="formatContent(sec.content)"></div>
-              </div>
+                <!-- 作者 -->
+                <div v-else-if="sec.type === 'author'" class="smart-author">
+                  {{ cleanTitle(sec.title) }}
+                </div>
 
-              <!-- 经文引用 -->
-              <div v-else-if="sec.type === 'verse_ref'" class="smart-verse">
-                <div class="smart-verse-ref">{{ cleanTitle(sec.title) }}</div>
-                <div v-if="sec.content" class="smart-verse-body" v-html="formatContent(sec.content)"></div>
-              </div>
+                <!-- 目录（重建为规范结构，不照抄原断行） -->
+                <div v-else-if="sec.type === 'toc'" class="smart-toc">
+                  <div class="smart-toc-label">{{ cleanTitle(sec.title) }}</div>
+                  <ul class="smart-toc-list">
+                    <li
+                      v-for="(item, lIdx) in rebuildTocContent(sec.content)"
+                      :key="lIdx"
+                      class="smart-toc-item"
+                      :class="'toc-level-' + item.level"
+                    >{{ item.text }}</li>
+                  </ul>
+                </div>
 
-              <!-- 多行经文引用块（独立排版） -->
-              <div v-else-if="sec.type === 'scripture_block'" class="smart-scripture">
-                <div class="smart-scripture-ref">{{ cleanTitle(sec.title) }}</div>
-                <blockquote v-if="sec.content" class="smart-scripture-body">{{ sec.content }}</blockquote>
-              </div>
+                <!-- 一级：序言/前言/全景/总论（篇章级） -->
+                <div v-else-if="sec.type === 'preface'" class="smart-preface">
+                  <div class="smart-preface-label">{{ cleanTitle(sec.title) }}</div>
+                  <div class="smart-preface-body" v-html="formatContent(sec.content)"></div>
+                </div>
 
-              <!-- 编号注释段（①②③） -->
-              <div v-else-if="sec.type === 'numbered_note'" class="smart-numbered">
-                <div v-if="sec.title" class="smart-numbered-title">{{ cleanTitle(sec.title) }}</div>
-                <div class="smart-numbered-body" v-html="formatContent(sec.content)"></div>
-              </div>
+                <!-- 二级：章标题 -->
+                <div v-else-if="sec.type === 'chapter_title'" class="smart-chapter">
+                  <h2>{{ cleanTitle(sec.title) }}</h2>
+                  <div v-if="sec.content" class="smart-chapter-body" v-html="formatContent(sec.content)"></div>
+                </div>
 
-              <!-- 正文 -->
-              <div v-else class="smart-body">
-                <div v-if="sec.title" class="smart-body-title">{{ cleanTitle(sec.title) }}</div>
-                <div class="smart-body-content" v-html="formatContent(sec.content)"></div>
-              </div>
-            </template>
+                <!-- 三级：章内单元标题 -->
+                <div v-else-if="sec.type === 'unit_title'" class="smart-unit">
+                  <h3>{{ cleanTitle(sec.title) }}</h3>
+                  <div v-if="sec.content" class="smart-unit-body" v-html="formatContent(sec.content)"></div>
+                </div>
 
-            <!-- 原文模式：完全尊重原始格式，不做任何排版调整 -->
-            <template v-else>
-              <div v-if="sec.title" class="original-title">{{ sec.title }}</div>
-              <div v-if="sec.content" class="original-content" v-html="formatPlainContent(sec.content)"></div>
+                <!-- 四级：主题小节标题 -->
+                <div v-else-if="sec.type === 'section_title'" class="smart-section">
+                  <h4>{{ cleanTitle(sec.title) }}</h4>
+                  <div v-if="sec.content" class="smart-section-body" v-html="formatContent(sec.content)"></div>
+                </div>
+
+                <!-- 经文引用 -->
+                <div v-else-if="sec.type === 'verse_ref'" class="smart-verse">
+                  <div class="smart-verse-ref">{{ cleanTitle(sec.title) }}</div>
+                  <div v-if="sec.content" class="smart-verse-body" v-html="formatContent(sec.content)"></div>
+                </div>
+
+                <!-- 多行经文引用块（独立排版） -->
+                <div v-else-if="sec.type === 'scripture_block'" class="smart-scripture">
+                  <div class="smart-scripture-ref">{{ cleanTitle(sec.title) }}</div>
+                  <blockquote v-if="sec.content" class="smart-scripture-body">{{ sec.content }}</blockquote>
+                </div>
+
+                <!-- 编号注释段（①②③） -->
+                <div v-else-if="sec.type === 'numbered_note'" class="smart-numbered">
+                  <div v-if="sec.title" class="smart-numbered-title">{{ cleanTitle(sec.title) }}</div>
+                  <div class="smart-numbered-body" v-html="formatContent(sec.content)"></div>
+                </div>
+
+                <!-- 正文 -->
+                <div v-else class="smart-body">
+                  <div v-if="sec.title" class="smart-body-title">{{ cleanTitle(sec.title) }}</div>
+                  <div class="smart-body-content" v-html="formatContent(sec.content)"></div>
+                </div>
+              </template>
+
+              <!-- 原文模式：完全尊重原始格式，不做任何排版调整 -->
+              <template v-else>
+                <div v-if="sec.title" class="original-title">{{ sec.title }}</div>
+                <div v-if="sec.content" class="original-content" v-html="formatPlainContent(sec.content)"></div>
+              </template>
             </template>
           </div>
         </div>
@@ -1577,6 +1772,203 @@ onMounted(() => { loadDetail() })
   color: #6b5a14;
   font-weight: 500;
 }
+
+/* ========== 段落内联编辑 ========== */
+
+/* 编辑按钮：悬浮在段落右上角 */
+.section-editable {
+  position: relative;
+}
+.inline-edit-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 3px 8px;
+  border: 1px solid #d0d3d9;
+  border-radius: 4px;
+  background: #fff;
+  color: #666;
+  cursor: pointer;
+  z-index: 5;
+  transition: all 0.15s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.section-editable:hover .inline-edit-btn {
+  display: inline-flex;
+}
+.inline-edit-btn:hover {
+  background: #5a8a6e;
+  color: #fff;
+  border-color: #5a8a6e;
+}
+
+/* 编辑器容器 */
+.inline-editor-wrap {
+  border: 2px solid #5a8a6e;
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+
+/* 标题编辑行 */
+.inline-editor-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e8e8e8;
+}
+.inline-editor-label {
+  font-size: 12px;
+  color: #888;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.inline-editor-title-input {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  outline: none;
+  color: var(--church-charcoal, #3a3a3a);
+  background: transparent;
+  padding: 4px 0;
+}
+.inline-editor-title-input:focus {
+  border-bottom: 1px solid #5a8a6e;
+}
+
+/* 工具栏 */
+.inline-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e8e8e8;
+  flex-wrap: wrap;
+}
+.it-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 4px;
+  transition: all 0.12s;
+}
+.it-btn:hover {
+  background: #e8f0eb;
+  border-color: #c0d4c8;
+}
+.it-btn.it-active {
+  background: #d4e5db;
+  border-color: #a0c4af;
+  color: #2d5e3e;
+}
+.it-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.it-sep {
+  width: 1px;
+  height: 20px;
+  background: #d0d3d9;
+  margin: 0 4px;
+}
+
+/* 编辑器内容区 */
+.inline-editor-content {
+  min-height: 120px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+.inline-editor-content :deep(.tiptap) {
+  outline: none;
+  min-height: 100px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #333;
+}
+.inline-editor-content :deep(.tiptap p) {
+  margin: 0 0 0.5em 0;
+}
+.inline-editor-content :deep(.tiptap h2) {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0.6em 0 0.3em 0;
+}
+.inline-editor-content :deep(.tiptap h3) {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0.5em 0 0.3em 0;
+}
+.inline-editor-content :deep(.tiptap h4) {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0.4em 0 0.2em 0;
+}
+.inline-editor-content :deep(.tiptap blockquote) {
+  border-left: 3px solid #c5b358;
+  padding-left: 12px;
+  margin: 0.5em 0;
+  color: #555;
+}
+.inline-editor-content :deep(.tiptap ul),
+.inline-editor-content :deep(.tiptap ol) {
+  padding-left: 1.5em;
+  margin: 0.4em 0;
+}
+.inline-editor-content :deep(.tiptap mark) {
+  background: #fef3cd;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* 操作按钮区 */
+.inline-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid #e8e8e8;
+  background: #fafafa;
+}
+.inline-save-btn {
+  font-size: 13px;
+  padding: 6px 20px;
+  border: none;
+  border-radius: 4px;
+  background: #5a8a6e;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.inline-save-btn:hover { background: #4a7a5e; }
+.inline-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.inline-cancel-btn {
+  font-size: 13px;
+  padding: 6px 16px;
+  border: 1px solid #d0d3d9;
+  border-radius: 4px;
+  background: #fff;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.inline-cancel-btn:hover { background: #f5f5f5; }
+.inline-cancel-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* 对比模式 */
 .read-main-compare {
