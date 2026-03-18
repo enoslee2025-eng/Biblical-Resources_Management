@@ -99,8 +99,11 @@ function parseTocEntries(tocContent, allSections) {
 
 const navItems = computed(() => {
   const items = []
-  /** 导航有意义的块类型 */
-  const navTypes = ['document_title', 'author', 'preface', 'chapter_title', 'unit_title', 'section_title', 'verse_ref', 'scripture_block', 'numbered_note']
+  /**
+   * 目录只显示文档结构层级（标题类），不显示经文引用和正文内容
+   * 经文引用（verse_ref, scripture_block）是正文中的引经，不是文档结构
+   */
+  const navTypes = ['document_title', 'author', 'preface', 'chapter_title', 'unit_title', 'section_title']
 
   /* 检查是否有文档自带的目录(toc)段落 */
   const tocSection = sections.value.find(s => s.type === 'toc')
@@ -126,40 +129,18 @@ const navItems = computed(() => {
     /* toc 类型本身不作为导航项 */
     if (sec.type === 'toc') continue
 
-    /* 非 body 类型：直接作为导航项 */
+    /* 只有文档结构类型才作为导航项 */
     if (navTypes.includes(sec.type)) {
       items.push({
         sectionIndex: i,
         label: cleanTitle(sec.title) || getTypeLabel(sec.type),
         type: sec.type
       })
-      continue
     }
-
-    /* body 类型：尝试从内容中提取经文引用 */
-    const text = (sec.title || '') + ' ' + (sec.content || '')
-    const refs = findAllScriptureRefs(text)
-
-    if (refs.length > 0) {
-      /* 用找到的第一个经文引用作为标签 */
-      const firstRef = text.substring(refs[0].start, refs[0].end)
-      items.push({
-        sectionIndex: i,
-        label: firstRef,
-        type: 'verse_ref'
-      })
-    } else if (sec.title && sec.title.length <= 30 && sec.title !== sec.content?.slice(0, sec.title.length)) {
-      /* 有独立标题（非截取自内容开头）的 body 块也显示 */
-      items.push({
-        sectionIndex: i,
-        label: sec.title,
-        type: 'body'
-      })
-    }
-    /* 否则跳过，不在目录中显示 */
+    /* 经文引用、编号注释、正文等内容块不出现在目录中 */
   }
 
-  /* 如果过滤后目录为空（全是纯 body 块），按固定间隔生成导航点 */
+  /* 如果过滤后目录为空（没有识别出任何标题），按固定间隔生成导航点 */
   if (items.length === 0 && sections.value.length > 0) {
     const step = Math.max(1, Math.ceil(sections.value.length / 15))
     for (let i = 0; i < sections.value.length; i += step) {
