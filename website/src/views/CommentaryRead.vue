@@ -863,6 +863,42 @@ async function saveEdit() {
   }
 }
 
+/** 智能排版状态 */
+const smartFormatting = ref(false)
+
+/**
+ * 智能排版：重置所有类型为 body，重新分析结构，保存到后端
+ */
+async function handleSmartFormat() {
+  if (smartFormatting.value || sections.value.length === 0) return
+  smartFormatting.value = true
+
+  try {
+    /* 将所有条目类型重置为 body，让 reAnalyzeSections 重新分析 */
+    const resetEntries = sections.value.map(s => ({
+      type: 'body',
+      title: s.title || '',
+      content: s.content || ''
+    }))
+
+    /* 重新智能分析结构 */
+    const analyzed = reAnalyzeSections(resetEntries)
+    sections.value = analyzed
+
+    /* 保存到后端 */
+    const contentJson = JSON.stringify(analyzed.map(s => ({
+      type: s.type || 'body',
+      title: s.title || '',
+      content: s.content || ''
+    })))
+    await updateResource(resourceId, { contentJson })
+  } catch (e) {
+    console.error('智能排版失败:', e)
+  } finally {
+    smartFormatting.value = false
+  }
+}
+
 onMounted(() => { loadDetail() })
 
 onBeforeUnmount(() => {
@@ -911,6 +947,15 @@ onBeforeUnmount(() => {
         <span class="header-progress" v-if="sections.length > 0">
           {{ currentIndex + 1 }} / {{ sections.length }}
         </span>
+        <button
+          class="smart-fmt-btn"
+          @click="handleSmartFormat"
+          :disabled="smartFormatting || sections.length === 0"
+          :aria-label="t('smart_format')"
+          :aria-busy="smartFormatting"
+        >
+          {{ smartFormatting ? '...' : t('smart_format') }}
+        </button>
         <button class="edit-btn" @click="goEdit" :aria-label="t('edit')">
           {{ t('edit') }}
         </button>
@@ -1293,6 +1338,28 @@ onBeforeUnmount(() => {
 }
 
 /* 编辑按钮 */
+.smart-fmt-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+  border: 1px solid #b8860b;
+  border-radius: 4px;
+  background: transparent;
+  color: #b8860b;
+  cursor: pointer;
+  margin-left: 8px;
+  transition: all 0.2s;
+}
+
+.smart-fmt-btn:hover {
+  background: #b8860b;
+  color: #fff;
+}
+
+.smart-fmt-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .edit-btn {
   font-size: 12px;
   padding: 4px 12px;
