@@ -297,6 +297,46 @@ function getTypeIcon(type) {
  * 当数据中所有段落都是 body 类型时，自动识别章标题、经文引用、序言等
  * 支持去除 ◆ 等装饰符号后再匹配
  */
+/**
+ * 判断条目是否像目录列表项（短标题、无实质内容）
+ */
+function isTocLikeEntry(entry) {
+  const rawTitle = (entry.title || '').trim()
+  const content = (entry.content || '').trim()
+  const title = rawTitle.replace(/^[◆◇●○■□★☆·•▶▪►\-–—\s]+/, '').trim()
+
+  /* 有大量正文内容的不是目录项 */
+  if (content.length > 50) return false
+  /* 无标题的不是目录项 */
+  if (!title) return false
+  /* 标题太长的不是目录项 */
+  if (title.length > 60) return false
+
+  /* 章标题格式 */
+  if (/^第[\s\d一二三四五六七八九十百零〇]+[章篇部]/.test(title) ||
+      /^\d+\s*章/.test(title) ||
+      /^(chapter|part)\s+\d+/i.test(title) ||
+      /^卷[一二三四五六七八九十\d]+/.test(title)) return true
+
+  /* 经文引用格式 */
+  if (/^\d+\s*[：:]\s*\d+/.test(title)) return true
+
+  /* 节标题 */
+  if (/^节\s+/.test(title)) return true
+
+  /* 序言/前言等 */
+  if (/^(序言|前言|引言|简介|概论|导论|绪论|概述|总论|结语|附录|全景)/i.test(title)) return true
+
+  /* ◆ 开头的装饰性条目 */
+  if (/^[◆◇●○■□★☆·•▶▪►]/.test(rawTitle)) return true
+
+  /* 编号开头的短条目 */
+  if (/^[一二三四五六七八九十]+[、.．：:]/.test(title) ||
+      /^\d+[、.．]\s*\S/.test(title)) return true
+
+  return false
+}
+
 function reAnalyzeSections(entries) {
   if (!entries || entries.length === 0) return entries
 
@@ -304,9 +344,61 @@ function reAnalyzeSections(entries) {
   const allBody = entries.every(e => !e.type || e.type === 'body')
   if (!allBody) return entries
 
+  /* 第一轮：找到目录位置，将后续的目录项合并 */
+  let tocIdx = -1
+  for (let i = 0; i < entries.length; i++) {
+    const title = (entries[i].title || '').trim().replace(/^[◆◇●○■□★☆·•▶▪►\-–—\s]+/, '').trim()
+    if (/^(目录|目次|contents|table\s+of\s+contents)$/i.test(title)) {
+      tocIdx = i
+      break
+    }
+  }
+
+  /* 合并目录后的连续目录项 */
+  let mergedEntries = entries
+  if (tocIdx >= 0) {
+    mergedEntries = []
+    let tocEntry = { ...entries[tocIdx] }
+    let tocLines = tocEntry.content ? [tocEntry.content.trim()] : []
+    let merging = false
+
+    for (let i = 0; i < entries.length; i++) {
+      if (i === tocIdx) {
+        merging = true
+        continue
+      }
+      if (merging && isTocLikeEntry(entries[i])) {
+        /* 将这个条目的标题追加到目录内容中 */
+        const line = (entries[i].title || '').trim()
+        if (line) tocLines.push(line)
+        continue
+      }
+      /* 遇到非目录项，停止合并 */
+      if (merging) {
+        tocEntry.content = tocLines.join('\n')
+        tocEntry.type = 'toc'
+        mergedEntries.push(tocEntry)
+        merging = false
+      }
+      mergedEntries.push(entries[i])
+    }
+    /* 处理末尾仍在合并状态的情况 */
+    if (merging) {
+      tocEntry.content = tocLines.join('\n')
+      tocEntry.type = 'toc'
+      mergedEntries.push(tocEntry)
+    }
+    /* 补回目录之前的条目 */
+    const beforeToc = entries.slice(0, tocIdx)
+    mergedEntries = [...beforeToc, ...mergedEntries]
+  }
+
   let hasDocTitle = false
   let hasAuthor = false
-  return entries.map((entry, idx) => {
+  return mergedEntries.map((entry, idx) => {
+    /* 已标记为 toc 的跳过 */
+    if (entry.type === 'toc') return entry
+
     const rawTitle = (entry.title || '').trim()
     const content = (entry.content || '').trim()
     /* 去除 ◆ ● ■ ★ ☆ · • 等装饰符号前缀 */
@@ -331,11 +423,6 @@ function reAnalyzeSections(entries) {
         newType = 'author'
         hasAuthor = true
       }
-    }
-
-    /* 目录标记 */
-    if (newType === 'body' && /^(目录|目次|contents|table\s+of\s+contents)$/i.test(title)) {
-      newType = 'toc'
     }
 
     /* 章标题：第X章 / X章 / Chapter X */
