@@ -209,27 +209,51 @@ function escapeHtml(str) {
 
 /**
  * 智能模式：将纯文本格式化为精排 HTML
- * - 按段落分割为 <p> 标签（双换行分段，单换行为 <br>）
- * - 经文引用自动高亮
- * - 首行缩进由 CSS 控制
+ *
+ * 排版规则（按优先级）：
+ * 1. 易读：每段只讲一个意思，超过180字自动拆分
+ * 2. 易找：经文引用克制高亮，结论前置
+ * 3. 易执行：段落结构清晰，避免"文字墙"
+ * 4. 美观：统一间距、无过度装饰
  */
 function formatContent(text) {
   if (!text) return ''
 
   /* 按双换行分成段落 */
-  const paragraphs = text.split(/\n\s*\n/)
+  const rawParagraphs = text.split(/\n\s*\n/)
+  const allParagraphs = []
 
-  return paragraphs.map(para => {
+  for (const para of rawParagraphs) {
     const trimmed = para.trim()
-    if (!trimmed) return ''
-    let escaped = escapeHtml(trimmed)
+    if (!trimmed) continue
 
-    /* 高亮经文引用 */
-    const refs = findAllScriptureRefs(trimmed)
+    /* 超过180字的段落自动拆分（在句号、问号、感叹号处拆） */
+    if (trimmed.length > 180) {
+      const sentences = trimmed.split(/(?<=[。！？；\.\!\?])\s*/)
+      let current = ''
+      for (const sentence of sentences) {
+        if (current.length + sentence.length > 180 && current.length > 0) {
+          allParagraphs.push(current.trim())
+          current = sentence
+        } else {
+          current += sentence
+        }
+      }
+      if (current.trim()) allParagraphs.push(current.trim())
+    } else {
+      allParagraphs.push(trimmed)
+    }
+  }
+
+  return allParagraphs.map(para => {
+    let escaped = escapeHtml(para)
+
+    /* 经文引用克制高亮（只高亮引用本身，不过度装饰） */
+    const refs = findAllScriptureRefs(para)
     if (refs.length > 0) {
       const sortedRefs = [...refs].sort((a, b) => b.start - a.start)
       for (const r of sortedRefs) {
-        const original = trimmed.substring(r.start, r.end)
+        const original = para.substring(r.start, r.end)
         const esc = escapeHtml(original)
         escaped = escaped.replace(esc, `<span class="verse-highlight">${esc}</span>`)
       }
@@ -1041,62 +1065,79 @@ onMounted(() => { loadDetail() })
   line-height: inherit;
 }
 
-/* ========== 智能模式（smart） ========== */
-.smart-block { margin-bottom: 8px; }
+/**
+ * ========== 智能模式排版系统 ==========
+ *
+ * 4级标题层级体系：
+ *   h1 文档标题/章标题  → 22px 700  前距48px 后距16px
+ *   h2 序言/全景         → 16px 600  前距32px 后距10px
+ *   h3 小节标题          → 14px 600  前距24px 后距8px
+ *   h4 经文引用标签      → 13px 600  前距20px 后距6px
+ *   正文                 → 14px 400  段后8px
+ *
+ * 设计原则（按优先级）：
+ *   1. 易读 — 每段≤180字，首行缩进，行距1.8
+ *   2. 易找 — 标题层级明显区分，经文引用克制高亮
+ *   3. 易执行 — 结构清晰、段落紧凑
+ *   4. 美观 — 无过度装饰，留白有节奏
+ */
+
+/* --- 块间距（留白节奏：标题前大 > 标题后中 > 段落后小） --- */
+.smart-block { margin-bottom: 6px; }
 .smart-block-document_title { margin-bottom: 4px; }
-.smart-block-author { margin-bottom: 24px; }
-.smart-block-chapter_title { margin-bottom: 16px; }
-.smart-block-preface { margin-bottom: 24px; }
-.smart-block-section_title { margin-bottom: 16px; }
-.smart-block-verse_ref { margin-bottom: 20px; }
-.smart-block-toc { margin-bottom: 24px; }
+.smart-block-author { margin-bottom: 28px; }
+.smart-block-chapter_title { margin-bottom: 12px; }
+.smart-block-preface { margin-bottom: 20px; }
+.smart-block-section_title { margin-bottom: 10px; }
+.smart-block-verse_ref { margin-bottom: 14px; }
+.smart-block-toc { margin-bottom: 28px; }
 .smart-block-body { margin-bottom: 4px; }
 
-/* --- 章节分隔线 --- */
+/* --- 一级标题分隔线（章标题前强制分页感） --- */
 .chapter-divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--church-border, #d4cdc4), transparent);
-  margin: 40px 0 32px 0;
+  background: var(--church-border, #d4cdc4);
+  margin: 48px 0 24px 0;
 }
 
-/* --- 文档标题 --- */
+/* --- h1 文档标题 --- */
 .smart-doc-title {
   text-align: center;
-  padding: 32px 0 8px 0;
+  padding: 24px 0 8px 0;
 }
 .smart-doc-title h1 {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
-  color: var(--church-charcoal, #3a3a3a);
+  color: var(--church-charcoal, #2a2a2a);
   margin: 0;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
+  line-height: 1.4;
 }
 .smart-doc-subtitle {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--church-warm-gray, #8a8178);
-  margin-top: 8px;
-  line-height: 1.6;
+  margin-top: 6px;
+  line-height: 1.5;
 }
 
-/* --- 作者 --- */
+/* --- 作者信息 --- */
 .smart-author {
   text-align: center;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--church-warm-gray, #8a8178);
-  font-style: italic;
-  padding-bottom: 16px;
-  border-bottom: 2px solid var(--church-border, #e0d8cf);
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--church-border, #e0d8cf);
 }
 
-/* --- 目录（干净列表，无段落线） --- */
+/* --- 目录（干净列表，无装饰） --- */
 .smart-toc {
-  padding: 12px 0;
+  padding: 8px 0;
 }
 .smart-toc-label {
   font-size: 16px;
   font-weight: 600;
-  color: var(--church-charcoal, #3a3a3a);
-  margin-bottom: 12px;
+  color: var(--church-charcoal, #2a2a2a);
+  margin-bottom: 10px;
 }
 .smart-toc-list {
   list-style: none;
@@ -1104,86 +1145,76 @@ onMounted(() => { loadDetail() })
   padding: 0;
 }
 .smart-toc-item {
-  font-size: 14px;
+  font-size: 13px;
   color: #555;
-  padding: 4px 0 4px 12px;
+  padding: 3px 0 3px 16px;
   line-height: 1.6;
 }
 
-/* --- 序言 --- */
+/* --- h2 序言/全景 --- */
 .smart-preface {
-  background: rgba(107,141,166,0.06);
-  border-left: 3px solid #6b8da6;
-  border-radius: 0 6px 6px 0;
-  padding: 16px 20px;
+  padding: 12px 0 8px 0;
 }
 .smart-preface-label {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
-  color: #6b8da6;
-  margin-bottom: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  color: var(--church-charcoal, #2a2a2a);
+  margin-bottom: 8px;
 }
 .smart-preface-body {
   font-size: 14px;
-  color: #555;
+  color: var(--church-charcoal, #3a3a3a);
   line-height: 1.8;
-  font-style: italic;
 }
 
-/* --- 章标题 --- */
+/* --- h1 章标题 --- */
 .smart-chapter {
-  border-left: 4px solid #5a8a6e;
-  padding: 12px 0 12px 16px;
-}
-.smart-chapter h2 {
-  font-size: 20px;
-  font-weight: 700;
-  color: #5a8a6e;
-  margin: 0;
-}
-.smart-chapter-body {
-  font-size: 14px;
-  color: var(--church-warm-gray, #8a8178);
-  margin-top: 6px;
-  line-height: 1.6;
-}
-
-/* --- 小节标题 --- */
-.smart-section {
   padding: 8px 0 4px 0;
 }
+.smart-chapter h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--church-charcoal, #2a2a2a);
+  margin: 0;
+  line-height: 1.4;
+}
+.smart-chapter-body {
+  font-size: 13px;
+  color: var(--church-warm-gray, #8a8178);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+/* --- h3 小节标题 --- */
+.smart-section {
+  padding: 16px 0 4px 0;
+}
 .smart-section h3 {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--church-charcoal, #3a3a3a);
   margin: 0;
-  padding-bottom: 6px;
-  border-bottom: 1px dashed var(--church-border, #e0d8cf);
+  line-height: 1.4;
 }
 .smart-section-body {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--church-charcoal, #3a3a3a);
   line-height: 1.8;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
-/* --- 经文引用 --- */
+/* --- h4 经文引用 --- */
 .smart-verse {
-  background: rgba(139,105,20,0.04);
-  border-left: 3px solid #c4a035;
-  border-radius: 0 6px 6px 0;
-  padding: 12px 16px;
+  padding: 12px 0 4px 0;
 }
 .smart-verse-ref {
   font-size: 14px;
   font-weight: 600;
-  color: #8b6914;
-  margin-bottom: 8px;
+  color: #6b5a14;
+  margin-bottom: 4px;
 }
 .smart-verse-body {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--church-charcoal, #3a3a3a);
   line-height: 1.8;
 }
@@ -1193,38 +1224,31 @@ onMounted(() => { loadDetail() })
   padding: 0;
 }
 .smart-body-title {
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--church-charcoal, #3a3a3a);
   margin-bottom: 4px;
 }
 .smart-body-content {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--church-charcoal, #3a3a3a);
-  line-height: 1.9;
+  line-height: 1.8;
 }
 
-/* --- 智能段落（<p> 标签） --- */
+/* --- 段落排版规则 --- */
+/* 每段≤180字，首行缩进2字符，段后留白小 */
 .smart-block :deep(.smart-paragraph) {
-  margin: 0 0 12px 0;
+  margin: 0 0 8px 0;
   text-indent: 2em;
 }
 .smart-block :deep(.smart-paragraph:last-child) {
   margin-bottom: 0;
 }
-/* 序言和经文引用内不缩进 */
-.smart-preface-body :deep(.smart-paragraph),
-.smart-verse-body :deep(.smart-paragraph) {
-  text-indent: 0;
-}
 
-/* --- 经文引用高亮（通用） --- */
+/* --- 经文引用高亮（克制：只标记引用，不过度装饰） --- */
 .smart-block :deep(.verse-highlight) {
-  color: #8b6914;
+  color: #6b5a14;
   font-weight: 500;
-  background: rgba(139,105,20,0.1);
-  padding: 1px 4px;
-  border-radius: 2px;
 }
 
 /* 对比模式 */
