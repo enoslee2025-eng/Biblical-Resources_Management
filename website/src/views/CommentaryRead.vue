@@ -291,12 +291,18 @@ function formatContent(text) {
       }
     }
 
-    /* 普通段落：超过 180 字自动拆分 */
-    if (trimmed.length > 180) {
+    /* 普通段落：超过 200 字自动拆分 */
+    /* 拆分策略：优先在转折词处拆、其次在句末标点处拆 */
+    if (trimmed.length > 200) {
+      /* 先按句末标点拆分 */
       const sentences = trimmed.split(/(?<=[。！？；\.\!\?])\s*/)
       let current = ''
       for (const sentence of sentences) {
-        if (current.length + sentence.length > 180 && current.length > 0) {
+        /* 检测转折词：即使未到 200 字，遇到明显转折也拆段 */
+        const hasTransition = current.length > 60 &&
+          /^(但是|然而|因此|所以|换句话说|相反|不过|总之|综上|事实上|实际上|另外|此外|与此同时)/
+            .test(sentence.trim())
+        if ((current.length + sentence.length > 200 || hasTransition) && current.length > 0) {
           allItems.push({ text: current.trim(), itemType: 'paragraph' })
           current = sentence
         } else {
@@ -641,7 +647,8 @@ function reAnalyzeSections(entries) {
       const checkText = title || (content ? content.split('\n')[0] : '')
       if (/^\d+\s*[：:]\s*\d+/.test(checkText) ||
           /^\s*[\(（]?\s*[一二三\u4e00-\u9fff]{1,8}\s*\d{1,3}\s*[：:章篇]/.test(checkText) ||
-          /^\s*[\(（]?\s*[123]?\s*[A-Za-z]{2,15}\.?\s+\d{1,3}\s*[：:]/.test(checkText)) {
+          /^\s*[\(（]?\s*[123]?\s*[A-Za-z]{2,15}\.?\s+\d{1,3}\s*[：:]/.test(checkText) ||
+          /^\s*[\(（]?\s*\d{1,3}\s*[：:]\s*\d{1,3}\s*[-–—~～至到]\s*\d{1,3}/.test(checkText)) {
         newType = 'verse_ref'
       }
     }
@@ -663,6 +670,26 @@ function reAnalyzeSections(entries) {
         if (avgLen < 60) {
           newType = 'scripture_block'
         }
+      }
+    }
+
+    /* === 多行诗歌/引文检测（非经文引用的多行短句） === */
+    if (newType === 'body' && content) {
+      const contentLines = content.split('\n').filter(l => l.trim())
+      if (contentLines.length >= 3) {
+        const avgLen = content.length / contentLines.length
+        const allShort = contentLines.every(l => l.trim().length < 50)
+        /* 多行短句（平均<40字、全部<50字）= 诗歌/引文块 */
+        if (avgLen < 40 && allShort) {
+          newType = 'scripture_block'
+        }
+      }
+    }
+
+    /* === 注释/补充说明检测 === */
+    if (newType === 'body' && title.length > 0) {
+      if (/^(注[：:]|说明[：:]|补充[：:]|备注[：:]|按[：:]|附注[：:]|Note[：:])/i.test(title)) {
+        newType = 'numbered_note'
       }
     }
 
@@ -1525,87 +1552,98 @@ onBeforeUnmount(() => {
 }
 
 /**
- * ========== 智能模式排版系统 ==========
+ * ========== 智能模式排版系统（书稿/注释规格） ==========
  *
- * 文档结构层级：
- *   封面页 → 文档标题(h1) + 作者
- *   目录   → 重建为规范结构，分层缩进
- *   一级   → 篇章级标题(h1)：序言/全景/总论  22px 700
- *   二级   → 章级标题(h2)：第X章              18px 700
- *   三级   → 单元标题(h3)：第X单元             16px 600
- *   四级   → 小节标题(h4)：主题小节            15px 600
- *   经文引用 → 短引内联，多行独立成引用块
- *   编号注释 → ①②③ 统一为编号讲解段
- *   正文   → 14px 400，每段≤180字，首行缩进
+ * 颜色系统（克制得体，仅三类）：
+ *   正文色：#222222
+ *   标题色：#1F1F1F / #2C3E50 / #34495E / #4A6072
+ *   注释/引用色：#555555
  *
- * 设计原则：
- *   1. 先清洗再排版（删除 PAGE/孤立页码/OCR 断裂）
- *   2. 一眼看出标题层级
- *   3. 经文引用有视觉区隔
- *   4. 章、节、单元边界清楚
- *   5. 不出现文字墙
+ * 字体系统：
+ *   标题：黑体系（Noto Sans CJK SC / Microsoft YaHei / sans-serif）
+ *   正文/序言：宋体系（Noto Serif CJK SC / SimSun / serif）
+ *   经文引用：楷体系（KaiTi / STKaiti / serif）
+ *
+ * 四级标题层级：
+ *   一级（序言/章/全景）：18px 700  #1F1F1F  段前24px 段后13px
+ *   二级（单元）：        15px 700  #2C3E50  段前18px 段后8px
+ *   三级（小节）：        13px 700  #34495E  段前13px 段后5px
+ *   四级（注释性标题）：  12px 600  #4A6072  段前10px 段后4px
+ *
+ * 正文：14px #222222  行距1.65  首行缩进2字符  段后6px
  */
+
+/* --- 字体族变量 --- */
+.smart-block {
+  --smart-font-heading: "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+  --smart-font-body: "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", "STSong", serif;
+  --smart-font-scripture: "KaiTi", "STKaiti", "FangSong", serif;
+}
 
 /* --- 块间距（留白节奏：标题前大 > 标题后中 > 段落后小） --- */
 .smart-block { margin-bottom: 6px; }
 .smart-block-document_title { margin-bottom: 4px; }
-.smart-block-author { margin-bottom: 28px; }
-.smart-block-chapter_title { margin-bottom: 12px; }
-.smart-block-preface { margin-bottom: 20px; }
-.smart-block-unit_title { margin-bottom: 12px; }
-.smart-block-section_title { margin-bottom: 10px; }
+.smart-block-author { margin-bottom: 32px; }
+.smart-block-chapter_title { margin-bottom: 13px; }
+.smart-block-preface { margin-bottom: 24px; }
+.smart-block-unit_title { margin-bottom: 8px; }
+.smart-block-section_title { margin-bottom: 5px; }
 .smart-block-verse_ref { margin-bottom: 14px; }
-.smart-block-scripture_block { margin-bottom: 16px; }
+.smart-block-scripture_block { margin-bottom: 18px; }
 .smart-block-numbered_note { margin-bottom: 14px; }
-.smart-block-toc { margin-bottom: 32px; }
-.smart-block-body { margin-bottom: 4px; }
+.smart-block-toc { margin-bottom: 36px; }
+.smart-block-body { margin-bottom: 6px; }
 
-/* --- 章标题前分隔线（强制分页感） --- */
+/* --- 章标题/序言前分隔线（强制分页感） --- */
 .chapter-divider {
   height: 1px;
-  background: var(--church-border, #d4cdc4);
-  margin: 48px 0 24px 0;
+  background: linear-gradient(to right, transparent, #d4cdc4 15%, #d4cdc4 85%, transparent);
+  margin: 56px 0 28px 0;
 }
 
 /* --- h1 文档标题（封面页） --- */
 .smart-doc-title {
   text-align: center;
-  padding: 24px 0 8px 0;
+  padding: 32px 0 10px 0;
 }
 .smart-doc-title h1 {
+  font-family: var(--smart-font-heading);
   font-size: 22px;
   font-weight: 700;
-  color: var(--church-charcoal, #2a2a2a);
+  color: #1F1F1F;
   margin: 0;
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
   line-height: 1.4;
 }
 .smart-doc-subtitle {
+  font-family: var(--smart-font-body);
   font-size: 13px;
-  color: var(--church-warm-gray, #8a8178);
-  margin-top: 6px;
+  color: #8a8178;
+  margin-top: 8px;
   line-height: 1.5;
 }
 
 /* --- 作者信息 --- */
 .smart-author {
   text-align: center;
+  font-family: var(--smart-font-body);
   font-size: 13px;
-  color: var(--church-warm-gray, #8a8178);
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--church-border, #e0d8cf);
+  color: #6B5B53;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #e0d8cf;
 }
 
 /* --- 目录（重建结构，分层缩进） --- */
 .smart-toc {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--church-border, #e0d8cf);
+  padding: 12px 0;
+  border-bottom: 1px solid #e0d8cf;
 }
 .smart-toc-label {
+  font-family: var(--smart-font-heading);
   font-size: 18px;
   font-weight: 700;
-  color: var(--church-charcoal, #2a2a2a);
-  margin-bottom: 12px;
+  color: #1F1F1F;
+  margin-bottom: 14px;
   text-align: center;
 }
 .smart-toc-list {
@@ -1614,95 +1652,106 @@ onBeforeUnmount(() => {
   padding: 0;
 }
 .smart-toc-item {
+  font-family: var(--smart-font-heading);
   font-size: 13px;
-  color: #444;
+  color: #2B2B2B;
   padding: 4px 0;
-  line-height: 1.6;
+  line-height: 1.45;
 }
 /* 目录层级缩进 */
 .smart-toc-item.toc-level-0 {
   font-weight: 600;
-  color: var(--church-charcoal, #2a2a2a);
+  color: #1F1F1F;
   padding-left: 0;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 .smart-toc-item.toc-level-1 {
   padding-left: 20px;
+  font-weight: 400;
 }
 .smart-toc-item.toc-level-2 {
   padding-left: 40px;
   font-size: 12px;
-  color: #666;
+  color: #555;
+  font-weight: 400;
 }
 
 /* --- 一级：序言/全景/总论（篇章级） --- */
 .smart-preface {
-  padding: 12px 0 8px 0;
+  padding: 24px 0 13px 0;
 }
 .smart-preface-label {
+  font-family: var(--smart-font-heading);
   font-size: 18px;
   font-weight: 700;
-  color: var(--church-charcoal, #2a2a2a);
-  margin-bottom: 10px;
+  color: #1F1F1F;
+  margin-bottom: 13px;
 }
 .smart-preface-body {
+  font-family: var(--smart-font-body);
   font-size: 14px;
-  color: var(--church-charcoal, #3a3a3a);
-  line-height: 1.8;
+  color: #222222;
+  line-height: 1.65;
 }
 
 /* --- 二级：章标题 --- */
 .smart-chapter {
-  padding: 8px 0 4px 0;
+  padding: 24px 0 8px 0;
 }
 .smart-chapter h2 {
+  font-family: var(--smart-font-heading);
   font-size: 18px;
   font-weight: 700;
-  color: var(--church-charcoal, #2a2a2a);
+  color: #1F1F1F;
   margin: 0;
   line-height: 1.4;
 }
 .smart-chapter-body {
+  font-family: var(--smart-font-body);
   font-size: 13px;
-  color: var(--church-warm-gray, #8a8178);
-  margin-top: 4px;
+  color: #8a8178;
+  margin-top: 5px;
   line-height: 1.5;
 }
 
 /* --- 三级：章内单元标题 --- */
 .smart-unit {
-  padding: 14px 0 4px 0;
+  padding: 18px 0 5px 0;
 }
 .smart-unit h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--church-charcoal, #2a2a2a);
+  font-family: var(--smart-font-heading);
+  font-size: 15px;
+  font-weight: 700;
+  color: #2C3E50;
   margin: 0;
   line-height: 1.4;
 }
 .smart-unit-body {
+  font-family: var(--smart-font-body);
   font-size: 14px;
-  color: var(--church-charcoal, #3a3a3a);
-  line-height: 1.8;
-  margin-top: 6px;
+  color: #222222;
+  line-height: 1.65;
+  margin-top: 8px;
 }
 
 /* --- 四级：主题小节标题 --- */
 .smart-section {
-  padding: 12px 0 4px 0;
+  padding: 13px 0 4px 0;
 }
 .smart-section h4 {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--church-charcoal, #3a3a3a);
+  font-family: var(--smart-font-heading);
+  font-size: 13px;
+  font-weight: 700;
+  color: #34495E;
   margin: 0;
   line-height: 1.4;
 }
 .smart-section-body {
+  font-family: var(--smart-font-body);
   font-size: 14px;
-  color: var(--church-charcoal, #3a3a3a);
-  line-height: 1.8;
-  margin-top: 6px;
+  color: #222222;
+  line-height: 1.65;
+  margin-top: 5px;
 }
 
 /* --- 经文引用（短引） --- */
@@ -1710,15 +1759,17 @@ onBeforeUnmount(() => {
   padding: 10px 0 4px 0;
 }
 .smart-verse-ref {
-  font-size: 14px;
+  font-family: var(--smart-font-heading);
+  font-size: 13px;
   font-weight: 600;
-  color: #6b5a14;
+  color: #6B5B53;
   margin-bottom: 4px;
 }
 .smart-verse-body {
+  font-family: var(--smart-font-body);
   font-size: 14px;
-  color: var(--church-charcoal, #3a3a3a);
-  line-height: 1.8;
+  color: #222222;
+  line-height: 1.65;
 }
 
 /* --- 多行经文引用块（独立排版，有视觉区隔） --- */
@@ -1726,19 +1777,21 @@ onBeforeUnmount(() => {
   padding: 8px 0;
 }
 .smart-scripture-ref {
-  font-size: 14px;
+  font-family: var(--smart-font-heading);
+  font-size: 13px;
   font-weight: 600;
-  color: #6b5a14;
-  margin-bottom: 6px;
+  color: #6B5B53;
+  margin-bottom: 8px;
 }
 .smart-scripture-body {
+  font-family: var(--smart-font-scripture);
   font-size: 13px;
-  color: #555;
+  color: #444444;
   line-height: 1.9;
   margin: 0;
-  padding: 10px 16px;
-  border-left: 3px solid #c5b358;
-  background: rgba(197, 179, 88, 0.04);
+  padding: 10px 16px 10px 14px;
+  border-left: 3px solid #D8D8D8;
+  background: transparent;
   white-space: pre-wrap;
 }
 
@@ -1747,15 +1800,17 @@ onBeforeUnmount(() => {
   padding: 6px 0;
 }
 .smart-numbered-title {
+  font-family: var(--smart-font-heading);
   font-size: 14px;
   font-weight: 600;
-  color: var(--church-charcoal, #3a3a3a);
-  margin-bottom: 6px;
+  color: #222222;
+  margin-bottom: 8px;
 }
 .smart-numbered-body {
+  font-family: var(--smart-font-body);
   font-size: 14px;
-  color: var(--church-charcoal, #3a3a3a);
-  line-height: 1.8;
+  color: #222222;
+  line-height: 1.65;
 }
 
 /* --- 正文 --- */
@@ -1763,21 +1818,23 @@ onBeforeUnmount(() => {
   padding: 0;
 }
 .smart-body-title {
-  font-size: 14px;
+  font-family: var(--smart-font-heading);
+  font-size: 12px;
   font-weight: 600;
-  color: var(--church-charcoal, #3a3a3a);
+  color: #4A6072;
   margin-bottom: 4px;
 }
 .smart-body-content {
+  font-family: var(--smart-font-body);
   font-size: 14px;
-  color: var(--church-charcoal, #3a3a3a);
-  line-height: 1.8;
+  color: #222222;
+  line-height: 1.65;
 }
 
 /* --- 段落排版规则 --- */
-/* 每段≤180字，首行缩进2字符，段间距统一 */
+/* 每段≤200字，首行缩进2字符，段后6px */
 .smart-block :deep(.smart-paragraph) {
-  margin: 0 0 8px 0;
+  margin: 0 0 6px 0;
   text-indent: 2em;
 }
 .smart-block :deep(.smart-paragraph:last-child) {
@@ -1789,26 +1846,27 @@ onBeforeUnmount(() => {
   padding-left: 0.5em;
   margin-bottom: 10px;
 }
-/* 编号符号高亮 */
+/* 编号符号高亮（克制：深色不抢眼） */
 .smart-block :deep(.note-number) {
-  color: #5a8a6e;
-  font-weight: 600;
+  color: #1F1F1F;
+  font-weight: 700;
   margin-right: 4px;
 }
 /* 内联经文引用块（formatContent 生成） */
 .smart-block :deep(.scripture-quote) {
+  font-family: var(--smart-font-scripture);
   font-size: 13px;
-  color: #555;
+  color: #444444;
   line-height: 1.9;
   margin: 8px 0;
   padding: 8px 14px;
-  border-left: 3px solid #c5b358;
-  background: rgba(197, 179, 88, 0.04);
+  border-left: 3px solid #D8D8D8;
+  background: transparent;
 }
 
 /* --- 经文引用高亮（克制：只标记引用，不过度装饰） --- */
 .smart-block :deep(.verse-highlight) {
-  color: #6b5a14;
+  color: #6B5B53;
   font-weight: 500;
 }
 
