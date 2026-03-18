@@ -73,7 +73,7 @@ const navItems = computed(() => {
     if (navTypes.includes(sec.type)) {
       items.push({
         sectionIndex: i,
-        label: sec.title || getTypeLabel(sec.type),
+        label: cleanTitle(sec.title) || getTypeLabel(sec.type),
         type: sec.type
       })
       continue
@@ -202,6 +202,14 @@ function tryParseJson(str) {
   try { return JSON.parse(str) } catch { return null }
 }
 
+/**
+ * 清理标题中的装饰符号（◆ ● ■ 等）
+ */
+function cleanTitle(text) {
+  if (!text) return ''
+  return text.replace(/^[◆◇●○■□★☆·•▶▪►\-–—\s]+/, '').trim()
+}
+
 /** 获取块类型的中文标签 */
 function getTypeLabel(type) {
   const labels = {
@@ -233,11 +241,7 @@ function getTypeIcon(type) {
 /**
  * 智能重新分析段落类型
  * 当数据中所有段落都是 body 类型时，自动识别章标题、经文引用、序言等
- * 让智能模式能展现差异化排版
- */
-/**
- * 智能重新分析段落类型
- * 当数据中所有段落都是 body 类型时，自动识别章标题、经文引用、序言等
+ * 支持去除 ◆ 等装饰符号后再匹配
  */
 function reAnalyzeSections(entries) {
   if (!entries || entries.length === 0) return entries
@@ -249,13 +253,15 @@ function reAnalyzeSections(entries) {
   let hasDocTitle = false
   let hasAuthor = false
   return entries.map((entry, idx) => {
-    const title = (entry.title || '').trim()
+    const rawTitle = (entry.title || '').trim()
     const content = (entry.content || '').trim()
+    /* 去除 ◆ ● ■ ★ ☆ · • 等装饰符号前缀 */
+    const title = rawTitle.replace(/^[◆◇●○■□★☆·•▶▪►\-–—\s]+/, '').trim()
     let newType = 'body'
 
     /* 文档标题：前3个条目中的短标题（无正文内容或内容很少） */
     if (!hasDocTitle && idx < 3 && title.length > 0 && title.length <= 50) {
-      if (/[著编译撰整理]|作者|译者|编者|by\s/i.test(title)) {
+      if (/牧师|传道|弟兄|姊妹|[著编译撰整理]|作者|译者|编者|by\s/i.test(title)) {
         newType = 'author'
         hasAuthor = true
       } else if (!content || content.length < 20) {
@@ -264,18 +270,24 @@ function reAnalyzeSections(entries) {
       }
     }
 
-    /* 作者：紧随文档标题之后的短行 */
-    if (newType === 'body' && !hasAuthor && idx < 5 && hasDocTitle &&
+    /* 作者：标题之后的短行，包含人名+职称 */
+    if (newType === 'body' && !hasAuthor && idx < 6 &&
         title.length > 0 && title.length <= 30 && (!content || content.length < 10)) {
-      if (/[著编译撰整理]|作者|译者|编者|by\s|——/i.test(title)) {
+      if (/牧师|传道[人]?|弟兄|姊妹|[著编译撰整理]|作者|译者|编者|pastor|by\s|——/i.test(title)) {
         newType = 'author'
         hasAuthor = true
       }
     }
 
-    /* 章标题：第X章 / Chapter X / 全大写短标题 */
+    /* 目录标记 */
+    if (newType === 'body' && /^(目录|目次|contents|table\s+of\s+contents)$/i.test(title)) {
+      newType = 'section_title'
+    }
+
+    /* 章标题：第X章 / X章 / Chapter X */
     if (newType === 'body') {
       if (/^第[\s\d一二三四五六七八九十百零〇]+[章篇部]/.test(title) ||
+          /^\d+\s*章/.test(title) ||
           /^(chapter|part)\s+\d+/i.test(title) ||
           /^卷[一二三四五六七八九十\d]+/.test(title) ||
           (/^[A-Z\s]{5,}$/.test(title) && title.length <= 40)) {
@@ -283,29 +295,34 @@ function reAnalyzeSections(entries) {
       }
     }
 
-    /* 序言/前言/结语 */
-    if (newType === 'body' && /^(序言|前言|引言|简介|概论|导论|绪论|概述|总论|结语|附录|跋|preface|introduction|conclusion|epilogue)/i.test(title)) {
+    /* 序言/前言/结语/全景 */
+    if (newType === 'body' && /^(序言|前言|引言|简介|概论|导论|绪论|概述|总论|结语|附录|跋|全景|preface|introduction|conclusion|epilogue)/i.test(title)) {
       newType = 'preface'
     }
 
-    /* 小节标题：编号开头的短标题 */
-    if (newType === 'body' && title.length > 0 && title.length <= 40 && (
+    /* 经文引用：X：Y-Z 或 X:Y 格式（支持中文全角冒号） */
+    if (newType === 'body') {
+      const checkText = title || (content ? content.split('\n')[0] : '')
+      if (/^\d+\s*[：:]\s*\d+/.test(checkText) ||
+          /^\s*[\(（]?\s*[一二三\u4e00-\u9fff]{1,8}\s*\d{1,3}\s*[：:章篇]/.test(checkText) ||
+          /^\s*[\(（]?\s*[123]?\s*[A-Za-z]{2,15}\.?\s+\d{1,3}\s*[：:]/.test(checkText)) {
+        newType = 'verse_ref'
+      }
+    }
+
+    /* 小节标题：编号开头的短标题（放在经文引用后，避免误判） */
+    if (newType === 'body' && title.length > 0 && title.length <= 50 && (
       /^[一二三四五六七八九十]+[、.．：:]/.test(title) ||
-      /^\d+[、.．：:]/.test(title) ||
+      /^\d+[、.．]\s*\S/.test(title) ||
       /^[（(]\s*\d+\s*[）)]/.test(title) ||
       /^[IVXLC]+[、.．]/.test(title)
     )) {
       newType = 'section_title'
     }
 
-    /* 经文引用开头（标题或内容首行） */
-    if (newType === 'body') {
-      const checkText = title || (content ? content.split('\n')[0] : '')
-      if (/^\s*[\(（]?\s*[一二三\u4e00-\u9fff]{1,8}\s*\d{1,3}\s*[:：章篇]/.test(checkText) ||
-          /^\s*[\(（]?\s*[123]?\s*[A-Za-z]{2,15}\.?\s+\d{1,3}\s*:/.test(checkText) ||
-          /^\s*\d+:\d+/.test(checkText)) {
-        newType = 'verse_ref'
-      }
+    /* 节标题：包含 "节" 字的标记 */
+    if (newType === 'body' && /^节\s+/.test(title)) {
+      newType = 'section_title'
     }
 
     return { ...entry, type: newType }
@@ -491,42 +508,42 @@ onMounted(() => { loadDetail() })
 
               <!-- 文档标题 -->
               <div v-if="sec.type === 'document_title'" class="smart-doc-title">
-                <h1>{{ sec.title }}</h1>
+                <h1>{{ cleanTitle(sec.title) }}</h1>
                 <div v-if="sec.content" class="smart-doc-subtitle" v-html="formatContent(sec.content)"></div>
               </div>
 
               <!-- 作者 -->
               <div v-else-if="sec.type === 'author'" class="smart-author">
-                {{ sec.title }}
+                {{ cleanTitle(sec.title) }}
               </div>
 
               <!-- 序言 -->
               <div v-else-if="sec.type === 'preface'" class="smart-preface">
-                <div class="smart-preface-label">{{ sec.title }}</div>
+                <div class="smart-preface-label">{{ cleanTitle(sec.title) }}</div>
                 <div class="smart-preface-body" v-html="formatContent(sec.content)"></div>
               </div>
 
               <!-- 章标题 -->
               <div v-else-if="sec.type === 'chapter_title'" class="smart-chapter">
-                <h2>{{ sec.title }}</h2>
+                <h2>{{ cleanTitle(sec.title) }}</h2>
                 <div v-if="sec.content" class="smart-chapter-body" v-html="formatContent(sec.content)"></div>
               </div>
 
               <!-- 小节标题 -->
               <div v-else-if="sec.type === 'section_title'" class="smart-section">
-                <h3>{{ sec.title }}</h3>
+                <h3>{{ cleanTitle(sec.title) }}</h3>
                 <div v-if="sec.content" class="smart-section-body" v-html="formatContent(sec.content)"></div>
               </div>
 
               <!-- 经文引用 -->
               <div v-else-if="sec.type === 'verse_ref'" class="smart-verse">
-                <div class="smart-verse-ref">{{ sec.title }}</div>
+                <div class="smart-verse-ref">{{ cleanTitle(sec.title) }}</div>
                 <div v-if="sec.content" class="smart-verse-body" v-html="formatContent(sec.content)"></div>
               </div>
 
               <!-- 正文 -->
               <div v-else class="smart-body">
-                <div v-if="sec.title" class="smart-body-title">{{ sec.title }}</div>
+                <div v-if="sec.title" class="smart-body-title">{{ cleanTitle(sec.title) }}</div>
                 <div class="smart-body-content" v-html="formatContent(sec.content)"></div>
               </div>
             </template>
@@ -566,26 +583,26 @@ onMounted(() => { loadDetail() })
                 :class="['section-block', 'smart-block', 'smart-block-' + (sec.type || 'body')]"
               >
                 <div v-if="sec.type === 'chapter_title' && idx > 0" class="chapter-divider"></div>
-                <div v-if="sec.type === 'document_title'" class="smart-doc-title"><h1>{{ sec.title }}</h1></div>
-                <div v-else-if="sec.type === 'author'" class="smart-author">{{ sec.title }}</div>
+                <div v-if="sec.type === 'document_title'" class="smart-doc-title"><h1>{{ cleanTitle(sec.title) }}</h1></div>
+                <div v-else-if="sec.type === 'author'" class="smart-author">{{ cleanTitle(sec.title) }}</div>
                 <div v-else-if="sec.type === 'preface'" class="smart-preface">
-                  <div class="smart-preface-label">{{ sec.title }}</div>
+                  <div class="smart-preface-label">{{ cleanTitle(sec.title) }}</div>
                   <div class="smart-preface-body" v-html="formatContent(sec.content)"></div>
                 </div>
                 <div v-else-if="sec.type === 'chapter_title'" class="smart-chapter">
-                  <h2>{{ sec.title }}</h2>
+                  <h2>{{ cleanTitle(sec.title) }}</h2>
                   <div v-if="sec.content" class="smart-chapter-body" v-html="formatContent(sec.content)"></div>
                 </div>
                 <div v-else-if="sec.type === 'section_title'" class="smart-section">
-                  <h3>{{ sec.title }}</h3>
+                  <h3>{{ cleanTitle(sec.title) }}</h3>
                   <div v-if="sec.content" class="smart-section-body" v-html="formatContent(sec.content)"></div>
                 </div>
                 <div v-else-if="sec.type === 'verse_ref'" class="smart-verse">
-                  <div class="smart-verse-ref">{{ sec.title }}</div>
+                  <div class="smart-verse-ref">{{ cleanTitle(sec.title) }}</div>
                   <div v-if="sec.content" class="smart-verse-body" v-html="formatContent(sec.content)"></div>
                 </div>
                 <div v-else class="smart-body">
-                  <div v-if="sec.title" class="smart-body-title">{{ sec.title }}</div>
+                  <div v-if="sec.title" class="smart-body-title">{{ cleanTitle(sec.title) }}</div>
                   <div class="smart-body-content" v-html="formatContent(sec.content)"></div>
                 </div>
               </div>
