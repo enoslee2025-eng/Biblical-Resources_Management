@@ -1707,9 +1707,10 @@ onBeforeUnmount(() => {
   --smart-font-heading: "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   --smart-font-body: "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   --smart-font-scripture: "KaiTi", "STKaiti", "FangSong", serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
   text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1;
 }
 
 /* --- 块间距（留白节奏：标题前大 > 标题后中 > 段落后小） --- */
@@ -1793,18 +1794,20 @@ onBeforeUnmount(() => {
 /* 目录层级缩进 */
 .smart-toc-item.toc-level-0 {
   font-weight: 600;
+  font-size: 15px;
   color: #1F1F1F;
   padding-left: 0;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 .smart-toc-item.toc-level-1 {
-  padding-left: 20px;
-  font-weight: 400;
+  padding-left: 24px;
+  font-weight: 500;
+  font-size: 14px;
 }
 .smart-toc-item.toc-level-2 {
-  padding-left: 40px;
-  font-size: 12px;
-  color: #555;
+  padding-left: 56px;
+  font-size: 13px;
+  color: #666;
   font-weight: 400;
 }
 
@@ -1821,9 +1824,9 @@ onBeforeUnmount(() => {
 }
 .smart-preface-body {
   font-family: var(--smart-font-body);
-  font-size: 15px;
+  font-size: 16px;
   color: #1a1a1a;
-  line-height: 1.75;
+  line-height: 1.8;
 }
 
 /* --- 二级：章标题 --- */
@@ -1832,13 +1835,14 @@ onBeforeUnmount(() => {
 }
 .smart-chapter h2 {
   font-family: var(--smart-font-heading);
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 800;
   color: #1a1a1a;
   margin: 0;
   line-height: 1.4;
   padding-bottom: 8px;
   border-bottom: 2px solid #d4cdc4;
+  letter-spacing: 0.5px;
 }
 .smart-chapter-body {
   font-family: var(--smart-font-body);
@@ -1854,17 +1858,18 @@ onBeforeUnmount(() => {
 }
 .smart-unit h3 {
   font-family: var(--smart-font-heading);
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
   color: #2C3E50;
   margin: 0;
   line-height: 1.4;
+  letter-spacing: 0.3px;
 }
 .smart-unit-body {
   font-family: var(--smart-font-body);
-  font-size: 15px;
+  font-size: 16px;
   color: #1a1a1a;
-  line-height: 1.75;
+  line-height: 1.8;
   margin-top: 8px;
 }
 
@@ -1874,7 +1879,7 @@ onBeforeUnmount(() => {
 }
 .smart-section h4 {
   font-family: var(--smart-font-heading);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: #34495E;
   margin: 0;
@@ -1884,28 +1889,28 @@ onBeforeUnmount(() => {
 }
 .smart-section-body {
   font-family: var(--smart-font-body);
-  font-size: 15px;
+  font-size: 16px;
   color: #1a1a1a;
-  line-height: 1.75;
+  line-height: 1.8;
   margin-top: 5px;
 }
 
-/* --- 经文引用（短引，不作为明显分段标记） --- */
+/* --- 经文引用（短引，不作为明显分段标记，融入正文节奏） --- */
 .smart-verse {
   padding: 2px 0 2px 0;
 }
 .smart-verse-ref {
   font-family: var(--smart-font-body);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 400;
-  color: #888888;
+  color: #aaaaaa;
   margin-bottom: 2px;
 }
 .smart-verse-body {
   font-family: var(--smart-font-body);
-  font-size: 15px;
+  font-size: 16px;
   color: #1a1a1a;
-  line-height: 1.75;
+  line-height: 1.8;
 }
 
 /* --- 多行经文引用块（独立排版，有视觉区隔） --- */
@@ -1962,9 +1967,9 @@ onBeforeUnmount(() => {
 }
 .smart-body-content {
   font-family: var(--smart-font-body);
-  font-size: 15px;
+  font-size: 16px;
   color: #1a1a1a;
-  line-height: 1.75;
+  line-height: 1.8;
 }
 
 /* --- 段落排版规则 --- */
@@ -2005,16 +2010,23 @@ onBeforeUnmount(() => {
   color: #6B5B53;
   font-weight: 500;
 }
-/* --- 圣经人名标注（深棕色加粗） --- */
+/* --- 圣经人名标注（深棕色加粗，带底色） --- */
 .smart-block :deep(.bible-person) {
-  color: #5D4037;
-  font-weight: 600;
+  color: #4E342E;
+  font-weight: 700;
+  background: rgba(121, 85, 72, 0.08);
+  padding: 0 2px;
+  border-radius: 2px;
 }
-/* --- 圣经地名标注（深蓝色、下划点线） --- */
+/* --- 圣经地名标注（深蓝色、下划点线，带底色） --- */
 .smart-block :deep(.bible-place) {
-  color: #1565C0;
-  text-decoration: underline dotted #90CAF9;
+  color: #0D47A1;
+  font-weight: 500;
+  text-decoration: underline dotted #64B5F6;
   text-underline-offset: 3px;
+  background: rgba(21, 101, 192, 0.06);
+  padding: 0 2px;
+  border-radius: 2px;
 }
 
 /* ========== 段落内联编辑 ========== */
